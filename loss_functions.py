@@ -8,7 +8,7 @@ import torch.nn.functional as F
 Basic library of loss functions for training GANs
 """
 
-def gen_loss_least_squares(disc_fake_pred):
+def gen_loss_least_squares(disc_fake_pred, device):
     '''
     Return the loss of a generator given the discriminator's scores of the generator's fake images.
     Assumes that discriminator outputs P(real)
@@ -23,7 +23,7 @@ def gen_loss_least_squares(disc_fake_pred):
     return gen_loss	
 
 
-def disc_loss_least_squares(disc_fake_pred, disc_real_pred):
+def disc_loss_least_squares(disc_fake_pred, disc_real_pred, device):
     '''
     Return the loss of a discriminator given the discriminator's scores for fake and real images
     Assumes that discriminator outputs P(real)
@@ -42,7 +42,7 @@ def disc_loss_least_squares(disc_fake_pred, disc_real_pred):
   
     return disc_loss      
 
-def gen_loss_basic(disc_fake_pred):
+def gen_loss_basic(disc_fake_pred, device):
     '''
     Return the loss of a generator given the discriminator's scores of the generator's fake images.
     Assumes that discriminator outputs P(real)
@@ -53,13 +53,13 @@ def gen_loss_basic(disc_fake_pred):
     '''
     
     # we want the discriminator's predictions on the *fake* images to be equal to 1
-    target_labels = torch.ones_like(disc_fake_pred)
+    target_labels = torch.ones_like(disc_fake_pred, device = device)
     gen_loss = F.binary_cross_entropy(disc_fake_pred, target_labels)
     
     return gen_loss
 
 
-def disc_loss_basic(disc_fake_pred, disc_real_pred):
+def disc_loss_basic(disc_fake_pred, disc_real_pred, device):
     '''
     Return the loss of a discriminator given the discriminator's scores for fake and real images
     Assumes that discriminator outputs P(real)
@@ -71,11 +71,11 @@ def disc_loss_basic(disc_fake_pred, disc_real_pred):
     '''
     
     # first, get how the disc. performs on the "fake" images (want this to be equal to 0)
-    target_labels_fake_images = torch.zeros_like(disc_fake_pred)
+    target_labels_fake_images = torch.zeros_like(disc_fake_pred, device = device)
     disc_loss_fake = F.binary_cross_entropy(disc_fake_pred, target_labels_fake_images)
     
     
-    target_labels_real_images = torch.ones_like(disc_real_pred)
+    target_labels_real_images = torch.ones_like(disc_real_pred,device = device)
     disc_loss_real = F.binary_cross_entropy(disc_real_pred, target_labels_real_images)
     
     disc_loss = (disc_loss_fake + disc_loss_real) / 2.0
@@ -84,7 +84,7 @@ def disc_loss_basic(disc_fake_pred, disc_real_pred):
     return disc_loss  
 
 
-def disc_loss_soft(disc_fake_pred, disc_real_pred):
+def disc_loss_soft(disc_fake_pred, disc_real_pred, device):
     '''
     Return the loss of a discriminator given the discriminator's scores for fake and real images
     Assumes that discriminator outputs P(real)
@@ -96,11 +96,11 @@ def disc_loss_soft(disc_fake_pred, disc_real_pred):
     '''
     
     # first, get how the disc. performs on the "fake" images (want this to be equal to 0)
-    target_labels_fake_images = torch.zeros_like(disc_fake_pred) + 0.1
+    target_labels_fake_images = torch.zeros_like(disc_fake_pred, device = device) + 0.1
     disc_loss_fake = F.binary_cross_entropy(disc_fake_pred, target_labels_fake_images)
     
     
-    target_labels_real_images = torch.ones_like(disc_real_pred) * 0.9
+    target_labels_real_images = torch.ones_like(disc_real_pred, device = device) * 0.9
     disc_loss_real = F.binary_cross_entropy(disc_real_pred, target_labels_real_images)
     
     disc_loss = (disc_loss_fake + disc_loss_real) / 2.0
@@ -109,7 +109,7 @@ def disc_loss_soft(disc_fake_pred, disc_real_pred):
     return disc_loss  
 
 
-def disc_loss_noisy(disc_fake_pred, disc_real_pred):
+def disc_loss_noisy(disc_fake_pred, disc_real_pred, device):
     '''
     Return the loss of a discriminator given the discriminator's scores for fake and real images
     Assumes that discriminator outputs P(real)
@@ -122,11 +122,11 @@ def disc_loss_noisy(disc_fake_pred, disc_real_pred):
     
     # first, get how the disc. performs on the "fake" images (want this to be equal to 0)
     # uniform between (0, 0.1)
-    target_labels_fake_images = torch.rand(disc_fake_pred.shape)*0.1
+    target_labels_fake_images = torch.rand(disc_fake_pred.shape, device = device)*0.1
     disc_loss_fake = F.binary_cross_entropy(disc_fake_pred, target_labels_fake_images)
     
     # uniform between (0.9, 1.0)
-    target_labels_real_images = torch.rand(disc_real_pred.shape)*0.1 + 0.9
+    target_labels_real_images = torch.rand(disc_real_pred.shape, device = device)*0.1 + 0.9
     disc_loss_real = F.binary_cross_entropy(disc_real_pred, target_labels_real_images)
     
     disc_loss = (disc_loss_fake + disc_loss_real) / 2.0
