@@ -16,8 +16,9 @@ class DCDiscriminatorCustom(nn.Module):
         input dim: dimension of the input image (assumes width and height are the same)
         # todo: implement input_dim
     '''
-    def __init__(self, im_chan=3, hidden_dim=64):
+    def __init__(self, im_chan=3, hidden_dim=64, dropout_prob = 0.3):
         super(DCDiscriminatorCustom, self).__init__()
+        self.dropout_prob = dropout_prob
         self.disc = nn.Sequential(
             self.make_disc_block(im_chan, hidden_dim),
             self.make_disc_block(hidden_dim, hidden_dim * 2),
@@ -48,7 +49,7 @@ class DCDiscriminatorCustom(nn.Module):
                 # Do we have to flatten the image ? But then how do we know the dimension ? I think it's the hidden_dim
                 nn.Flatten(),
                 # some people said dropout layers tend to work better
-                nn.Dropout(p = 0.3),
+                nn.Dropout(p = self.dropout_prob),
                 nn.Linear(36, 1),
                 # want to output a probability, so it's between 0 and 1
                 # if we explictly take the sigmoid here then make sure to use the proper loss later on
