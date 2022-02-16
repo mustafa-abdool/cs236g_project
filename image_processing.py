@@ -184,6 +184,8 @@ class ImageProcessor:
 
 							pkmn_types = self.id_to_type_dict[pkmn_num_tag]
 							# this might save an image multiple times if a pokemon has 2 types
+							# todo: save it twice for a single type as well to have all things be balanced
+							assert len(pkmn_types) <= 2 and len(pkmn_types) >= 1
 							for pkmn_type in pkmn_types:
 								filepath = './{}/{}/{}{}_{}.jpg'.format(output_dir, pkmn_type, shiny_prefix, folder_prefix, pkmn_number)
 								if debug:

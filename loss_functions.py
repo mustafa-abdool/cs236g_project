@@ -39,8 +39,29 @@ def disc_loss_least_squares(disc_fake_pred, disc_real_pred, device):
     # basically, want D(real) to be 1 and D(fake) to be 0
     disc_loss = 0.5 * (torch.mean((disc_real_pred - 1) ** 2) + torch.mean((disc_fake_pred)**2))
     
+    return disc_loss  
+
+
+def disc_loss_least_squares_noisy(disc_fake_pred, disc_real_pred, device):
+    '''
+    Return the loss of a discriminator given the discriminator's scores for fake and real images
+    Assumes that discriminator outputs P(real)
+    Parameters:
+        disc_fake_pred: the discriminator's scores of the fake images - shape (B, 1)
+        disc_real_pred: the discriminator's scores of the real images - shape (B, 1)
+    Returns:
+        disc_loss: a scalar for the discriminator's loss, accounting for the relevant factors
+    '''
+    
+    # first, get how the disc. performs on the "fake" images (want this to be equal to 0)
+
+    # basically, want D(real) to be 1 and D(fake) to be 0
+    rand_ones_target = torch.rand(disc_real_pred.shape, device = device)*0.1 + 0.9
+    rand_zeros_target = torch.rand(disc_fake_pred.shape, device = device)*0.1
+    disc_loss = 0.5 * (torch.mean((disc_real_pred - rand_ones_target) ** 2) + torch.mean((disc_fake_pred - rand_zeros_target)**2))
+    
   
-    return disc_loss      
+    return disc_loss          
 
 def gen_loss_basic(disc_fake_pred, device):
     '''
@@ -148,6 +169,8 @@ def get_disc_loss_func(name):
 		return disc_loss_basic
 	if name == "mse_disc_loss":
 		return disc_loss_least_squares
+    if name == "mse_disc_loss_noisy":
+        return disc_loss_least_squares_noisy
 	if name == "noisy_disc_loss":
 		return disc_loss_noisy
 	if name == "soft_disc_loss":
