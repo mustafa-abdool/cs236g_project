@@ -14,3 +14,10 @@ def get_noise(n_samples, z_dim, device='cpu'):
       device: the device type
     '''
     return torch.randn(n_samples, z_dim, device=device)
+
+
+# todo: add method to get conditional sample from dataset
+
+# add decoding lib from type to idx here
+
+

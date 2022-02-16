@@ -165,15 +165,15 @@ def get_generator_loss_func(name):
 
 
 def get_disc_loss_func(name):
-	if name == "basic_disc_loss":
-		return disc_loss_basic
-	if name == "mse_disc_loss":
-		return disc_loss_least_squares
+    if name == "basic_disc_loss":
+        return disc_loss_basic
+    if name == "mse_disc_loss":
+        return disc_loss_least_squares
     if name == "mse_disc_loss_noisy":
         return disc_loss_least_squares_noisy
-	if name == "noisy_disc_loss":
-		return disc_loss_noisy
-	if name == "soft_disc_loss":
-		return disc_loss_soft
-	else:
-		print("No disc loss function found for name: {}".format(name))
+    if name == "noisy_disc_loss":
+        return disc_loss_noisy
+    if name == "soft_disc_loss":
+        return disc_loss_soft
+    else:
+        print("No disc loss function found for name: {}".format(name))

@@ -23,12 +23,14 @@ class DCGeneratorConditional(nn.Module):
         super(DCGeneratorConditional, self).__init__()
         self.z_dim = z_dim
         self.use_class_embed = use_class_embed
-
+    
         if use_class_embed:
+            self.class_embed_size = class_embed_size
+            self.input_dim = self.z_dim + self.class_embed_size
             self.class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = class_embed_size)
-
         else:
             self.input_dim = self.z_dim + NUM_PKMN_TYPES # one-hot encode
+            self.class_embed_size = NUM_PKMN_TYPES
 
 
         # Build the neural network
@@ -77,6 +79,7 @@ class DCGeneratorConditional(nn.Module):
             class_labels: class labels for the images to be generated (n_samples)
         '''
         bs = len(noise)
+        class_labels = class_labels.long()
 
         if self.use_class_embed:
             label_tensor = self.class_embedding(class_labels)
@@ -84,6 +87,10 @@ class DCGeneratorConditional(nn.Module):
         else:
             # shape (bs, 18)
             label_tensor = F.one_hot(class_labels, num_classes = NUM_PKMN_TYPES)
+
+        
+        noise = noise.view(bs, self.z_dim)
+        label_tensor = label_tensor.view(bs, self.class_embed_size)
 
         # concat noise and labels
         noise_and_label_input = torch.cat((noise, label_tensor), dim = 1)

@@ -80,7 +80,9 @@ class DCDiscriminatorConditional(nn.Module):
 
         bs = len(image)
 
-        class_embed = self.class_embedding(class_labels)
+        class_labels = class_labels.view(bs)
+
+        class_embed = self.class_embedding(class_labels.long())
 
         first_dim_tile_size = int(self.input_image_dim / self.class_embed_size)
         class_embed_tiled = class_embed.tile((first_dim_tile_size,self.input_image_dim)).view(bs, 1, self.input_image_dim, self.input_image_dim)
@@ -88,5 +90,4 @@ class DCDiscriminatorConditional(nn.Module):
         image_and_class_embed = torch.cat((image, class_embed_tiled), dim = 1)
 
         disc_pred = self.disc(image_and_class_embed)
-        #print(disc_pred.shape)
-        return disc_pred.view(len(disc_pred), 1)
+        return disc_pred.view(bs, 1)
