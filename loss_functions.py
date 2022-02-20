@@ -8,6 +8,96 @@ import torch.nn.functional as F
 Basic library of loss functions for training GANs
 """
 
+
+def gradient_penalty(gradient):
+    '''
+    Return the gradient penalty, given a gradient.
+    Given a batch of image gradients, you calculate the magnitude of each image's gradient
+    and penalize the mean quadratic distance of each magnitude to 1.
+    Parameters:
+        gradient: the gradient of the critic's scores, with respect to the mixed image
+    Returns:
+        penalty: the gradient penalty
+    '''
+    # Flatten the gradients so that each row captures one image
+    gradient = gradient.view(len(gradient), -1)
+
+    # Calculate the magnitude of every row
+    gradient_norm = gradient.norm(2, dim=1)
+    
+    # Penalize the mean squared distance of the gradient norms from 1
+    penalty = torch.mean((1-gradient_norm)**2)
+    return penalty
+
+# Critic loss used for the WGAN
+def get_disc_loss_wgan(crit_fake_pred, crit_real_pred, gp, c_lambda):
+    '''
+    Return the loss of a critic given the critic's scores for fake and real images,
+    the gradient penalty, and gradient penalty weight.
+    Parameters:
+        crit_fake_pred: the critic's scores of the fake images
+        crit_real_pred: the critic's scores of the real images
+        gp: the unweighted gradient penalty
+        c_lambda: the current weight of the gradient penalty 
+    Returns:
+        crit_loss: a scalar for the critic's loss, accounting for the relevant factors
+    '''
+
+    mean_fake_score = torch.mean(crit_fake_pred)
+    mean_real_score = torch.mean(crit_real_pred)
+    
+    # we want the real score to be much higher than the fake score
+    # for this to give us a "low" loss 
+    crit_loss = -1.0 * (mean_real_score - mean_fake_score) + c_lambda * gp
+    return crit_loss
+
+# Generator loss used for WGAN
+def get_gen_loss_wgan(crit_fake_pred, device):
+    '''
+    Return the loss of a generator given the critic's scores of the generator's fake images.
+    Parameters:
+        crit_fake_pred: the critic's scores of the fake images
+    Returns:
+        gen_loss: a scalar loss value for the current batch of the generator
+    '''
+    gen_loss = -1.0 * torch.mean(crit_fake_pred) # the prediction of the critic is just the "realness" of an image
+    # so the generator wants this to be as high as possible
+    return gen_loss    
+
+
+# specific to the multiclass problem for you
+def get_gradient(crit, real, true_labels, fake, epsilon):
+    '''
+    Return the gradient of the critic's scores with respect to mixes of real and fake images.
+    Parameters:
+        crit: the critic model
+        real: a batch of real images
+        fake: a batch of fake images
+        epsilon: a vector of the uniformly random proportions of real/fake per mixed image
+    Returns:
+        gradient: the gradient of the critic's scores, with respect to the mixed image
+    '''
+    # Mix the images together
+    mixed_images = real * epsilon + fake * (1 - epsilon)
+
+    # Calculate the critic's scores on the mixed images
+    mixed_scores = crit(mixed_images, true_labels)
+    
+    # Take the gradient of the scores with respect to the images
+    gradient = torch.autograd.grad(
+        # Note: You need to take the gradient of outputs with respect to inputs.
+        # This documentation may be useful, but it should not be necessary:
+        # https://pytorch.org/docs/stable/autograd.html#torch.autograd.grad
+        inputs=mixed_images, # this gives you a gradient which is the shape of the images, it backprops through
+        # the discriminator network I guess
+        outputs=mixed_scores,
+        # These other parameters have to do with the pytorch autograd engine works
+        grad_outputs=torch.ones_like(mixed_scores), 
+        create_graph=True,
+        retain_graph=True,
+    )[0]
+    return gradient    
+
 def gen_loss_least_squares(disc_fake_pred, device):
     '''
     Return the loss of a generator given the discriminator's scores of the generator's fake images.
@@ -157,11 +247,13 @@ def disc_loss_noisy(disc_fake_pred, disc_real_pred, device):
 
 
 def get_generator_loss_func(name):
-	if name == "basic_gen_loss":
-		return gen_loss_basic
-	if name == "mse_gen_loss":
-		return gen_loss_least_squares
-	print("No gen loss function found for name: {}".format(name))
+    if name == "basic_gen_loss":
+        return gen_loss_basic
+    if name == "mse_gen_loss":
+        return gen_loss_least_squares
+    if name == "wgan_gen_loss":
+        return get_gen_loss_wgan
+    print("No gen loss function found for name: {}".format(name))
 
 
 def get_disc_loss_func(name):
@@ -175,5 +267,7 @@ def get_disc_loss_func(name):
         return disc_loss_noisy
     if name == "soft_disc_loss":
         return disc_loss_soft
+    if name == "wgan_disc_loss":
+        return get_disc_loss_wgan
     else:
         print("No disc loss function found for name: {}".format(name))

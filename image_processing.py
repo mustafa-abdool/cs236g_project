@@ -4,6 +4,10 @@ import glob
 import os
 import argparse
 import json
+from pkmn_constants import PKMN_TYPES
+import pprint
+
+pp = pprint.PrettyPrinter(indent=4)
 
 cur_dir = os.getcwd()
 
@@ -20,8 +24,33 @@ INPUT_IMAGE_DIRS = [
 # metadata file location 
 METADATA_FILE = "pokemon_metadata.json"
 
+# Map from alternative type --> Main type
+CLASS_GROUP_MAPPING = {
+	'Ice' : 'Water',
+	'Flying' : 'Dragon',
+	'Fairy' : 'Psychic',
+	'Ground' : 'Rock',
+	'Dark' : 'Ghost',
+}
 
 class ImageProcessor:
+
+	def get_valid_types(self):
+
+		if self.config['group_classes']:
+			all_types = set(PKMN_TYPES)
+			removed_types = set(CLASS_GROUP_MAPPING.keys())
+			remaining_types = all_types - removed_types
+			return remaining_types
+
+		else:
+			return PKMN_TYPES
+
+	def get_alternative_type(self,current_type):
+		if current_type in CLASS_GROUP_MAPPING:
+			return CLASS_GROUP_MAPPING[current_type]
+		else:
+			return current_type
 
 	def __init__(self):
 		print("in the init method...")
@@ -33,9 +62,15 @@ class ImageProcessor:
 
 		if self.config['classification_mode']:
 			self.id_to_type_dict = self.setup_id_to_type_dict()
-			self.all_types = set([v[0] for k,v in self.id_to_type_dict.items()])
-			print(self.all_types)
-			assert len(self.all_types) == 18
+			self.all_types = self.get_valid_types() #set([v[0] for k,v in self.id_to_type_dict.items()])
+			if self.config['group_classes']:
+				assert len(self.all_types) < 18
+			else:
+				assert len(self.all_types) == 18
+
+
+			self.type_count_dict = dict((type_name, 0) for type_name in self.all_types)
+			print(self.type_count_dict)
 
 	def parse_args(self):
 		parser = argparse.ArgumentParser()
@@ -68,6 +103,18 @@ class ImageProcessor:
 		parser.add_argument('--classification_mode',
 		                    type=bool,
 		                    default=False)
+		# If using conditional mode, whether to duplicate images for single-type Pokemon		
+		parser.add_argument('--balance_classes',
+		                    type=bool,
+		                    default=False)
+		# When using conditional generation, whether to group Pokemon of the same general class together
+		parser.add_argument('--group_classes',
+		                    type=bool,
+		                    default=False)
+		# When using conditional generation, whether to only take the first type of dual type Pokemon
+		parser.add_argument('--main_class_only',
+		                    type=bool,
+		                    default=False)		                    			                    		
 		parser.add_argument('--output_dir_name',
 		                    type=str,
 		                    default="pokemon_images")	
@@ -92,9 +139,9 @@ class ImageProcessor:
 	def process_images(self):
 		# for classification mode, the inner dir name is given by the type, so we don't specify it here
 		if self.config['classification_mode']:
-			output_dir = "{output_dir_name}_size={output_size}_shiny={include_shiny}".format(**self.config)
+			output_dir = "{output_dir_name}_size={output_size}_shiny={include_shiny}__bg={bg_color}_mainclass={main_class_only}_groupclasses={group_classes}".format(**self.config)
 		else:
-			output_dir = "{output_dir_name}_size={output_size}_shiny={include_shiny}/{inner_dir_name}".format(**self.config)
+			output_dir = "{output_dir_name}_size={output_size}_shiny={include_shiny}_bg={bg_color}/{inner_dir_name}".format(**self.config)
 		include_shiny = self.config['include_shiny']
 		output_width = self.config['output_size']
 		debug = self.config['debug']
@@ -183,14 +230,36 @@ class ImageProcessor:
 								continue
 
 							pkmn_types = self.id_to_type_dict[pkmn_num_tag]
+
+							#print("Original pkmn type is: {}".format(pkmn_types))
+
+							# only use the first class in this mode, if a pokemon as dual types
+							if self.config['main_class_only'] and len(pkmn_types) == 2:
+								pkmn_types = [pkmn_types[0]]
+
+							# if we're balancing the classes, then duplicate it if has a single type
+							if self.config['balance_classes'] and len(pkmn_types) == 1:
+								pkmn_types = [pkmn_types[0], pkmn_types[0]]
+
+							# if grouping classes, some smaller classes get mapped to new types
+							if self.config['group_classes']:
+								pkmn_types = [self.get_alternative_type(pkmn_type) for pkmn_type in pkmn_types]
+
+							if len(pkmn_types) > 2 or len(pkmn_types) < 1:
+								print("!!!! Found bad types: {}".format(pkmn_types))
+
 							# this might save an image multiple times if a pokemon has 2 types
-							# todo: save it twice for a single type as well to have all things be balanced
 							assert len(pkmn_types) <= 2 and len(pkmn_types) >= 1
+
+
 							for pkmn_type in pkmn_types:
 								filepath = './{}/{}/{}{}_{}.jpg'.format(output_dir, pkmn_type, shiny_prefix, folder_prefix, pkmn_number)
 								if debug:
 									print("=== in classification output mode == type is: {}".format(pkmn_type))
 									print("Save filepath is: {}, raw file name is: {}".format(filepath, file))
+								
+
+								self.type_count_dict[pkmn_type] += 1
 								jpg.save(filepath)
 
 						# basic mode, only save each pokemon once to the main dir
@@ -203,10 +272,13 @@ class ImageProcessor:
 							jpg.save(filepath)
 
 
-
-						
-
 		print("======Processed {} files in total!".format(total_processed))
+		
+		if classification_mode:
+			print("==== Using classification mode! Images by type dict is: ")
+			pp.pprint(self.type_count_dict)
+
+		
 
 if __name__ == '__main__':
     print("Hit the main method!")
