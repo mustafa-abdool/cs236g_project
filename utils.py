@@ -20,4 +20,7 @@ def get_noise(n_samples, z_dim, device='cpu'):
 
 # add decoding lib from type to idx here
 
-
+# method that uses the truncation trick to get a noise vector
+def get_truncated_noise(num_samples, z_dim, device = 'cpu', mean = 0, std = 1, thres = 1):
+    x = torch.empty(num_samples, z_dim)
+    return torch.nn.init.trunc_normal_(x, mean = mean, std = std, a = -1 * thres, b = thres).to(device)

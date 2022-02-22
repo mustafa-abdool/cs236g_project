@@ -110,7 +110,50 @@ def gen_loss_least_squares(disc_fake_pred, device):
     
     # we want the discriminator's predictions on the *fake* images to be equal to 1
     gen_loss = 0.5 * torch.mean((disc_fake_pred - 1)**2)
-    return gen_loss	
+    return gen_loss
+
+
+def disc_loss_patchGAN(disc_fake_pred, disc_real_pred, device):
+    '''
+    Return the loss of a discriminator given the discriminator's scores for fake and real images
+    Assumes that discriminator outputs a logit that represents P(real) over some mxm patches 
+    '''
+
+    loss_func = nn.BCEWithLogitsLoss()
+    
+    # first, get how the disc. performs on the "fake" images (want this to be equal to 0)
+    target_labels_fake_images = torch.zeros_like(disc_fake_pred, device = device)
+    disc_loss_fake = loss_func(disc_fake_pred, target_labels_fake_images)
+    
+    target_labels_real_images = torch.ones_like(disc_real_pred,device = device)
+    disc_loss_real = loss_func(disc_real_pred, target_labels_real_images)
+    
+    disc_loss = (disc_loss_fake + disc_loss_real) / 2.0
+    
+    return disc_loss  
+
+def noisy_disc_loss_patchGAN(disc_fake_pred, disc_real_pred, device):
+    '''
+    Return the loss of a discriminator given the discriminator's scores for fake and real images
+    Assumes that discriminator outputs a logit that represents P(real) over some mxm patches
+
+    We do label smoothing here, so basically P(real) for fakes is int he range 0 - 0.1
+    and P(real) for real is in the range 0.9 - 1
+
+    '''
+
+    loss_func = nn.BCEWithLogitsLoss()
+    
+    # first, get how the disc. performs on the "fake" images (want this to be equal to 0)
+    target_labels_fake_images = torch.rand(disc_fake_pred.shape, device = device)*0.1
+    disc_loss_fake = loss_func(disc_fake_pred, target_labels_fake_images)
+    
+    target_labels_real_images = torch.rand(disc_real_pred.shape, device = device)*0.1 + 0.9
+    disc_loss_real = loss_func(disc_real_pred, target_labels_real_images)
+    
+    disc_loss = (disc_loss_fake + disc_loss_real) / 2.0
+    
+    return disc_loss  
 
 
 def disc_loss_least_squares(disc_fake_pred, disc_real_pred, device):
@@ -166,6 +209,24 @@ def gen_loss_basic(disc_fake_pred, device):
     # we want the discriminator's predictions on the *fake* images to be equal to 1
     target_labels = torch.ones_like(disc_fake_pred, device = device)
     gen_loss = F.binary_cross_entropy(disc_fake_pred, target_labels)
+    
+    return gen_loss
+
+
+def gen_loss_basic_with_logits(disc_fake_pred, device):
+    '''
+    Return the loss of a generator given the discriminator's scores of the generator's fake images.
+    Assumes that discriminator outputs LOGITS that represent P(real)
+    Parameters:
+        disc_fake_pred: the discriminator's scores of the fake images
+    Returns:
+        gen_loss: a scalar loss value for the current batch of the generator
+    '''
+    
+    # we want the discriminator's predictions on the *fake* images to be equal to 1
+    loss_func = nn.BCEWithLogitsLoss()
+    target_labels = torch.ones_like(disc_fake_pred, device = device)
+    gen_loss = loss_func(disc_fake_pred, target_labels)
     
     return gen_loss
 
@@ -253,6 +314,8 @@ def get_generator_loss_func(name):
         return gen_loss_least_squares
     if name == "wgan_gen_loss":
         return get_gen_loss_wgan
+    if name == "basic_gen_loss_with_logits":
+        return gen_loss_basic_with_logits
     print("No gen loss function found for name: {}".format(name))
 
 
@@ -269,5 +332,9 @@ def get_disc_loss_func(name):
         return disc_loss_soft
     if name == "wgan_disc_loss":
         return get_disc_loss_wgan
+    if name == "patchgan_disc_loss":
+        return disc_loss_patchGAN
+    if name == "noisy_patchgan_disc_loss":
+        return noisy_disc_loss_patchGAN
     else:
         print("No disc loss function found for name: {}".format(name))
