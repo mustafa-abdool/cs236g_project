@@ -35,7 +35,7 @@ class ContractingBlock(nn.Module):
     Values:
         input_channels: the number of channels to expect from a given input
     '''
-    def __init__(self, input_channels, use_dropout=False, use_bn=True):
+    def __init__(self, input_channels, use_dropout=False, use_bn=True, dropout_prob = 0.5):
         super(ContractingBlock, self).__init__()
         self.conv1 = nn.Conv2d(input_channels, input_channels * 2, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(input_channels * 2, input_channels * 2, kernel_size=3, padding=1)
@@ -45,7 +45,7 @@ class ContractingBlock(nn.Module):
             self.batchnorm = nn.BatchNorm2d(input_channels * 2)
         self.use_bn = use_bn
         if use_dropout:
-            self.dropout = nn.Dropout()
+            self.dropout = nn.Dropout(p = dropout_prob)
         self.use_dropout = use_dropout
 
     def forward(self, x):
@@ -80,13 +80,13 @@ class DiscriminatorPatchGAN(nn.Module):
         input_channels: the number of image input channels
         hidden_channels: the initial number of discriminator convolutional filters
     '''
-    def __init__(self, input_channels=3, hidden_channels=8):
+    def __init__(self, input_channels=3, hidden_channels=8, use_dropout = False, dropout_prob = 0.5):
         super(DiscriminatorPatchGAN, self).__init__()
         self.upfeature = FeatureMapBlock(input_channels, hidden_channels)
-        self.contract1 = ContractingBlock(hidden_channels, use_bn=False)
-        self.contract2 = ContractingBlock(hidden_channels * 2)
-        self.contract3 = ContractingBlock(hidden_channels * 4)
-        self.contract4 = ContractingBlock(hidden_channels * 8)
+        self.contract1 = ContractingBlock(hidden_channels, use_bn=False, use_dropout = use_dropout, dropout_prob = dropout_prob)
+        self.contract2 = ContractingBlock(hidden_channels * 2, use_dropout = use_dropout, dropout_prob = dropout_prob)
+        self.contract3 = ContractingBlock(hidden_channels * 4, use_dropout = use_dropout, dropout_prob = dropout_prob)
+        self.contract4 = ContractingBlock(hidden_channels * 8, use_dropout = use_dropout, dropout_prob = dropout_prob)
         #### START CODE HERE ####
         # Basically, you want to map into a 1 channel image
         self.final = nn.Conv2d(hidden_channels * 16, 1, kernel_size=1)
@@ -113,7 +113,8 @@ class DiscriminatorPatchGANConditional(nn.Module):
         input_channels: the number of image input channels
         hidden_channels: the initial number of discriminator convolutional filters
     '''
-    def __init__(self, input_channels=3, hidden_channels=8, class_embed_size = 16, input_image_dim = 96):
+    def __init__(self, input_channels=3, hidden_channels=8, 
+                class_embed_size = 16, input_image_dim = 96, use_dropout = False, dropout_prob = 0.5):
         super(DiscriminatorPatchGANConditional, self).__init__()
 
 
@@ -126,10 +127,10 @@ class DiscriminatorPatchGANConditional(nn.Module):
 
         # since we add an additional channel for the class map, we have to add +1 here,
         self.upfeature = FeatureMapBlock(input_channels + 1, hidden_channels)
-        self.contract1 = ContractingBlock(hidden_channels, use_bn=False)
-        self.contract2 = ContractingBlock(hidden_channels * 2)
-        self.contract3 = ContractingBlock(hidden_channels * 4)
-        self.contract4 = ContractingBlock(hidden_channels * 8)
+        self.contract1 = ContractingBlock(hidden_channels, use_bn=False, use_dropout = use_dropout, dropout_prob = dropout_prob)
+        self.contract2 = ContractingBlock(hidden_channels * 2, use_dropout = use_dropout, dropout_prob = dropout_prob)
+        self.contract3 = ContractingBlock(hidden_channels * 4, use_dropout = use_dropout, dropout_prob = dropout_prob)
+        self.contract4 = ContractingBlock(hidden_channels * 8, use_dropout = use_dropout, dropout_prob = dropout_prob)
         #### START CODE HERE ####
         # Basically, you want to map into a 1 channel image
         self.final = nn.Conv2d(hidden_channels * 16, 1, kernel_size=1)
