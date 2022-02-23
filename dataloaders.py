@@ -70,7 +70,7 @@ def get_normalization_stats(jpg_directory, image_dim, batch_size = 4):
 # Factory method for getting a dataloader of a certain type
 # returns (dataloader, denorm_transform). 
 # The denorm_transform values can be used when drawing the actual images to get it back to the right scale
-def get_pkmn_dataloader(dataloader_name, batch_size):
+def get_pkmn_dataloader(dataloader_name, batch_size, num_workers = 1):
 
 	if dataloader_name == "shiny_64_dim":
 		jpg_directory = "./pokemon_images_all_size=64_shiny=True/" 
@@ -82,7 +82,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=pkmn_data, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 		return pkmn_dataloader, IDENTITY_NORM
 
 	if dataloader_name == "conditional_64_dim_no_shiny_with_flip_standard_norm":
@@ -114,7 +114,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform		
@@ -148,7 +148,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform		
@@ -188,7 +188,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform
@@ -229,7 +229,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform				
@@ -269,7 +269,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform							
@@ -291,7 +291,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=pkmn_data, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform
@@ -314,7 +314,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=pkmn_data, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform
@@ -349,7 +349,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform		
@@ -390,7 +390,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform
@@ -405,7 +405,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=pkmn_data, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 		return pkmn_dataloader, IDENTITY_NORM
 
 
@@ -427,7 +427,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=pkmn_data, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
@@ -450,7 +450,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=pkmn_data, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
@@ -502,7 +502,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform
@@ -534,7 +534,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform
@@ -577,7 +577,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform
@@ -619,7 +619,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform
@@ -664,7 +664,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform
@@ -707,7 +707,7 @@ def get_pkmn_dataloader(dataloader_name, batch_size):
 		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
 		                                              batch_size=batch_size, 
 		                                              shuffle=True, 
-		                                              num_workers=1)
+		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform

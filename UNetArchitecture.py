@@ -51,7 +51,7 @@ class ContractingBlock(nn.Module):
     Values:
         input_channels: the number of channels to expect from a given input
     '''
-    def __init__(self, input_channels, use_dropout=False, use_bn=True, dropout_prob):
+    def __init__(self, input_channels, use_dropout=False, use_bn=True, dropout_prob = 0.5):
         super(ContractingBlock, self).__init__()
         self.conv1 = nn.Conv2d(input_channels, input_channels * 2, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(input_channels * 2, input_channels * 2, kernel_size=3, padding=1)
@@ -171,7 +171,7 @@ class UNet(nn.Module):
     '''
     def __init__(self, input_channels = 1, output_channels = 3, 
         hidden_channels=32, input_dim = 96, z_dim = 32,
-        use_dropout = False, dropout_prob = 0.5):
+        use_dropout = True, dropout_prob = 0.5):
         super(UNet, self).__init__()
 
         assert input_dim in set([64, 96])
@@ -183,9 +183,9 @@ class UNet(nn.Module):
         assert input_dim % z_dim == 0
         
         self.upfeature = FeatureMapBlock(input_channels, hidden_channels)
-        self.contract1 = ContractingBlock(hidden_channels, use_dropout=True, dropout_prob = 0.5)
-        self.contract2 = ContractingBlock(hidden_channels * 2, use_dropout=True, dropout_prob = 0.5)
-        self.contract3 = ContractingBlock(hidden_channels * 4, use_dropout=True, dropout_prob = 0.5)
+        self.contract1 = ContractingBlock(hidden_channels, use_dropout=use_dropout, dropout_prob = 0.5)
+        self.contract2 = ContractingBlock(hidden_channels * 2, use_dropout=use_dropout, dropout_prob = 0.5)
+        self.contract3 = ContractingBlock(hidden_channels * 4, use_dropout=use_dropout, dropout_prob = 0.5)
         self.contract4 = ContractingBlock(hidden_channels * 8)
         self.contract5 = ContractingBlock(hidden_channels * 16)
         self.contract6 = ContractingBlock(hidden_channels * 32)
@@ -196,8 +196,6 @@ class UNet(nn.Module):
         self.expand4 = ExpandingBlock(hidden_channels * 4)
         self.expand5 = ExpandingBlock(hidden_channels * 2)
         self.downfeature = FeatureMapBlock(hidden_channels, output_channels)
-        # Basically, you can just add some other channels if you want to upsample the conversation
-        self.final_transform = torch.nn.ConvTranspose2d(output_channels, output_channels, kernel_size=8 + 25, stride = 1)
         self.tanh = torch.nn.Tanh()
 
     def forward(self, noise_vec):
@@ -230,10 +228,9 @@ class UNet(nn.Module):
         x11 = self.expand4(x10, x1)
         x12 = self.expand5(x11, x0)
         xn = self.downfeature(x12)
-        x13 = self.final_transform(xn)
         # NOTE: We use a tanh here to make sure the output image is in the range [-1, 1], the original architecture
         # used a sigmoid
-        return self.tanh(x13)
+        return self.tanh(xn)
 
 
 class UNetConditional(nn.Module):
@@ -249,7 +246,7 @@ class UNetConditional(nn.Module):
     def __init__(self, input_channels = 1, output_channels = 3, hidden_channels=32, 
                  input_dim = 96, z_dim = 32, use_class_embed = False, class_embed_size = 16,
                  use_conditional_layer_arch = False, use_mapping_network = False, 
-                 map_network_hidden_size = 16, dropout_prob = 0.5):
+                 map_network_hidden_size = 16, dropout_prob = 0.5, use_dropout = True):
         super(UNetConditional, self).__init__()
 
         assert input_dim in set([64, 96])
@@ -279,9 +276,9 @@ class UNetConditional(nn.Module):
         assert input_dim % self.final_dim == 0
         
         self.upfeature = FeatureMapBlock(input_channels, hidden_channels)
-        self.contract1 = ContractingBlock(hidden_channels, use_dropout=True, dropout_prob = 0.5)
-        self.contract2 = ContractingBlock(hidden_channels * 2, use_dropout=True, dropout_prob = 0.5)
-        self.contract3 = ContractingBlock(hidden_channels * 4, use_dropout=True, dropout_prob = 0.5)
+        self.contract1 = ContractingBlock(hidden_channels, use_dropout=use_dropout, dropout_prob = dropout_prob)
+        self.contract2 = ContractingBlock(hidden_channels * 2, use_dropout=use_dropout, dropout_prob = dropout_prob)
+        self.contract3 = ContractingBlock(hidden_channels * 4, use_dropout=use_dropout, dropout_prob = dropout_prob)
         self.contract4 = ContractingBlock(hidden_channels * 8)
         self.contract5 = ContractingBlock(hidden_channels * 16)
         self.contract6 = ContractingBlock(hidden_channels * 32)
@@ -292,8 +289,6 @@ class UNetConditional(nn.Module):
         self.expand4 = ExpandingBlock(hidden_channels * 4)
         self.expand5 = ExpandingBlock(hidden_channels * 2)
         self.downfeature = FeatureMapBlock(hidden_channels, output_channels)
-        # Basically, you can just add some other channels if you want to upsample the conversation
-        self.final_transform = torch.nn.ConvTranspose2d(output_channels, output_channels, kernel_size=8 + 25, stride = 1)
         self.tanh = torch.nn.Tanh()
 
     def forward(self, noise_vec, class_labels):
@@ -360,7 +355,6 @@ class UNetConditional(nn.Module):
         x11 = self.expand4(x10, x1)
         x12 = self.expand5(x11, x0)
         xn = self.downfeature(x12)
-        x13 = self.final_transform(xn)
         # NOTE: We use a tanh here to make sure the output image is in the range [-1, 1], the original architecture
         # used a sigmoid
-        return self.tanh(x13)        
+        return self.tanh(xn)        
