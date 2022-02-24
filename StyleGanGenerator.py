@@ -395,13 +395,13 @@ class MicroStyleGANGeneratorConditional(nn.Module):
         x = self.block0(x, w)
         
         x_block1 = self.block1(x, w) # First generator run output
-        x_block1_image = self.block1_to_image(x_block1)
+        #x_block1_image = self.block1_to_image(x_block1)
         
         x_block2 = self.block2(x_block1, w) # Second generator run output 
-        x_block2_image = self.block2_to_image(x_block2)
+        #x_block2_image = self.block2_to_image(x_block2)
         
         x_block3 = self.block3(x_block2, w) # third generator block output
-        x_block3_image = self.block3_to_image(x_block3)
+        #x_block3_image = self.block3_to_image(x_block3)
         
         x_block4 = self.block4(x_block3, w) # fourth generator block output
         x_block4_image = self.block4_to_image(x_block4)
@@ -413,16 +413,18 @@ class MicroStyleGANGeneratorConditional(nn.Module):
         # interpolation = self.alpha * x_big_image + (1 - self.alpha) * x_small_upsample
         #### END CODE HERE #### 
         
+        tanh_func = nn.Tanh()
         if return_intermediate:
             return interpolation, x_small_upsample, x_big_image
           
         if self.output_dim == 128:
           x_block5 = self.block5(x_block4, w) # fourth generator block output
           x_block5_image = self.block5_to_image(x_block5)
-          return x_block5_image
+
+          return tanh_func(x_block5_image)
         
         else:
-          return x_block4_image
+          return tanh_func(x_block4)
     
     #UNIT TEST COMMENT: Required for grading
     def get_self(self):
