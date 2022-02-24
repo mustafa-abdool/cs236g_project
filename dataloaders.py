@@ -232,7 +232,90 @@ def get_pkmn_dataloader(dataloader_name, batch_size, num_workers = 1):
 		                                              num_workers=num_workers)
 
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
-		return pkmn_dataloader, denorm_transform				
+		return pkmn_dataloader, denorm_transform		
+
+
+
+
+	if dataloader_name == "conditional_64_dim_mainclass_with_shiny_and_back_flip_rotate_custom_norm":
+		jpg_directory = "./pokemon_images_size=128_shiny=False_incude_back=False_bg=WHITE_mainclass=True_groupclasses=True" 
+
+		# Convert channels from [0, 1] to [-1, 1], using real data
+		channel_means, channel_stds = get_normalization_stats(jpg_directory, 64)
+
+		normal_transforms = transforms.Compose([
+		  transforms.ToTensor(),
+		  transforms.Normalize(mean = channel_means, std = channel_stds)
+		])
+
+		# use random flip and normalization transform
+		flip_transforms = transforms.Compose([
+		  transforms.RandomHorizontalFlip(p=1.0),
+		  transforms.ToTensor(),
+		  transforms.Normalize(mean = channel_means, std = channel_stds)
+		])
+
+		# use random flip and normalization transform
+		rotate_transforms = transforms.Compose([
+		  transforms.RandomRotation(45), # rotate up to 45 degrees in each direction
+		  transforms.ToTensor(),
+		  transforms.Normalize(mean = channel_means, std = channel_stds)
+		])		
+
+		pkmn_data_normal = datasets.ImageFolder(root = jpg_directory,transform = normal_transforms)
+		pkmn_data_flipped = datasets.ImageFolder(root = jpg_directory,transform = flip_transforms)
+		pkmn_data_rotated = datasets.ImageFolder(root = jpg_directory,transform = rotate_transforms)
+
+		final_dataset = ConcatDataset([pkmn_data_normal, pkmn_data_flipped, pkmn_data_rotated])
+
+
+		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
+		                                              batch_size=batch_size, 
+		                                              shuffle=True, 
+		                                              num_workers=num_workers)
+
+		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
+		return pkmn_dataloader, denorm_transform	
+
+	if dataloader_name == "conditional_64_dim_mainclass_with_shiny_flip_rotate_custom_norm":
+		jpg_directory = "./pokemon_images_size=128_shiny=True_incude_back=False_bg=WHITE_mainclass=True_groupclasses=True" 
+
+		# Convert channels from [0, 1] to [-1, 1], using real data
+		channel_means, channel_stds = get_normalization_stats(jpg_directory, 64)
+
+		normal_transforms = transforms.Compose([
+		  transforms.ToTensor(),
+		  transforms.Normalize(mean = channel_means, std = channel_stds)
+		])
+
+		# use random flip and normalization transform
+		flip_transforms = transforms.Compose([
+		  transforms.RandomHorizontalFlip(p=1.0),
+		  transforms.ToTensor(),
+		  transforms.Normalize(mean = channel_means, std = channel_stds)
+		])
+
+		# use random flip and normalization transform
+		rotate_transforms = transforms.Compose([
+		  transforms.RandomRotation(45), # rotate up to 45 degrees in each direction
+		  transforms.ToTensor(),
+		  transforms.Normalize(mean = channel_means, std = channel_stds)
+		])		
+
+		pkmn_data_normal = datasets.ImageFolder(root = jpg_directory,transform = normal_transforms)
+		pkmn_data_flipped = datasets.ImageFolder(root = jpg_directory,transform = flip_transforms)
+		pkmn_data_rotated = datasets.ImageFolder(root = jpg_directory,transform = rotate_transforms)
+
+		final_dataset = ConcatDataset([pkmn_data_normal, pkmn_data_flipped, pkmn_data_rotated])
+
+
+		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
+		                                              batch_size=batch_size, 
+		                                              shuffle=True, 
+		                                              num_workers=num_workers)
+
+		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
+		return pkmn_dataloader, denorm_transform						
 
 	if dataloader_name == "conditional_64_dim_no_shiny_with_flip_and_rotate_and_standard_norm":
 		jpg_directory = "./pokemon_images_by_type_all_size=64_shiny=False/" 
@@ -456,6 +539,105 @@ def get_pkmn_dataloader(dataloader_name, batch_size, num_workers = 1):
 		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
 		return pkmn_dataloader, denorm_transform
 
+		elif dataloader_name == "condition_64_with_shiny_and_back_flip_rotate_jitter_rotate_standard_normalize":
+			jpg_directory = "./pokemon_images_size=64_shiny=True_incude_back=True_bg=WHITE_mainclass=True_groupclasses=True" 
+
+			# Convert channels from [0, 1] to [-1, 1]
+			channel_means, channel_stds = (0.5, 0.5, 0.5), (0.5,0.5,0.5)
+
+			normal_transforms = transforms.Compose([
+			  transforms.ToTensor(),
+			  transforms.Normalize(mean = channel_means, std = channel_stds)
+			])
+
+			# use random flip and normalization transform
+			flip_transforms = transforms.Compose([
+			  transforms.RandomHorizontalFlip(p=1.0),
+			  transforms.ToTensor(),
+			  transforms.Normalize(mean = channel_means, std = channel_stds)
+			])
+
+			# color transform
+			color_transforms = transforms.Compose([
+			  transforms.ColorJitter(0.5, 0.5, 0.5),
+			  transforms.ToTensor(),
+			  transforms.Normalize(mean = channel_means, std = channel_stds)
+			])
+
+			# use random flip and normalization transform
+			rotate_transforms = transforms.Compose([
+			  transforms.RandomRotation(45), # rotate up to 45 degrees in each direction
+			  transforms.ToTensor(),
+			  transforms.Normalize(mean = channel_means, std = channel_stds)
+			])		
+
+
+			pkmn_data_normal = datasets.ImageFolder(root = jpg_directory,transform = normal_transforms)
+			pkmn_data_flipped = datasets.ImageFolder(root = jpg_directory,transform = flip_transforms)
+			pkmn_data_color_jitter = datasets.ImageFolder(root = jpg_directory,transform = color_transforms)
+			pkmn_data_rotated = datasets.ImageFolder(root = jpg_directory,transform = rotate_transforms)
+
+
+			final_dataset = ConcatDataset([pkmn_data_normal, pkmn_data_flipped, pkmn_data_color_jitter, pkmn_data_rotated])
+
+
+			pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
+			                                              batch_size=batch_size, 
+			                                              shuffle=True, 
+			                                              num_workers=num_workers)
+
+			denorm_transform = get_denormalization_transform(channel_means,channel_stds)
+			return pkmn_dataloader, denorm_transform
+
+	elif dataloader_name == "condition_64_with_shiny_flip_rotate_jitter_rotate_standard_normalize":
+		jpg_directory = "./pokemon_images_size=64_shiny=True__bg=WHITE_mainclass=True_groupclasses=True" 
+
+		# Convert channels from [0, 1] to [-1, 1]
+		channel_means, channel_stds = (0.5, 0.5, 0.5), (0.5,0.5,0.5)
+
+		normal_transforms = transforms.Compose([
+		  transforms.ToTensor(),
+		  transforms.Normalize(mean = channel_means, std = channel_stds)
+		])
+
+		# use random flip and normalization transform
+		flip_transforms = transforms.Compose([
+		  transforms.RandomHorizontalFlip(p=1.0),
+		  transforms.ToTensor(),
+		  transforms.Normalize(mean = channel_means, std = channel_stds)
+		])
+
+		# color transform
+		color_transforms = transforms.Compose([
+		  transforms.ColorJitter(0.5, 0.5, 0.5),
+		  transforms.ToTensor(),
+		  transforms.Normalize(mean = channel_means, std = channel_stds)
+		])
+
+		# use random flip and normalization transform
+		rotate_transforms = transforms.Compose([
+		  transforms.RandomRotation(45), # rotate up to 45 degrees in each direction
+		  transforms.ToTensor(),
+		  transforms.Normalize(mean = channel_means, std = channel_stds)
+		])		
+
+
+		pkmn_data_normal = datasets.ImageFolder(root = jpg_directory,transform = normal_transforms)
+		pkmn_data_flipped = datasets.ImageFolder(root = jpg_directory,transform = flip_transforms)
+		pkmn_data_color_jitter = datasets.ImageFolder(root = jpg_directory,transform = color_transforms)
+		pkmn_data_rotated = datasets.ImageFolder(root = jpg_directory,transform = rotate_transforms)
+
+
+		final_dataset = ConcatDataset([pkmn_data_normal, pkmn_data_flipped, pkmn_data_color_jitter, pkmn_data_rotated])
+
+
+		pkmn_dataloader = torch.utils.data.DataLoader(dataset=final_dataset, 
+		                                              batch_size=batch_size, 
+		                                              shuffle=True, 
+		                                              num_workers=num_workers)
+
+		denorm_transform = get_denormalization_transform(channel_means,channel_stds)
+		return pkmn_dataloader, denorm_transform
 
 	elif dataloader_name == "shiny_96_flip_rotate_jitter_rotate_standard_normalize":
 		jpg_directory = "./pokemon_images_all_size=96_shiny=True" 
