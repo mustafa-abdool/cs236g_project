@@ -99,6 +99,10 @@ class ImageProcessor:
 		parser.add_argument('--include_shiny',
 		                    type=bool,
 		                    default=False)
+		# whether to include back sprites folder or not
+		parser.add_argument('--include_back',
+		                    type=bool,
+		                    default=False)		
 		# whether to create sub-folders for each pokemon type (requires meta-data file to be loaded)		
 		parser.add_argument('--classification_mode',
 		                    type=bool,
@@ -139,10 +143,11 @@ class ImageProcessor:
 	def process_images(self):
 		# for classification mode, the inner dir name is given by the type, so we don't specify it here
 		if self.config['classification_mode']:
-			output_dir = "{output_dir_name}_size={output_size}_shiny={include_shiny}__bg={bg_color}_mainclass={main_class_only}_groupclasses={group_classes}".format(**self.config)
+			output_dir = "{output_dir_name}_size={output_size}_shiny={include_shiny}_incude_back={include_back}_bg={bg_color}_mainclass={main_class_only}_groupclasses={group_classes}".format(**self.config)
 		else:
 			output_dir = "{output_dir_name}_size={output_size}_shiny={include_shiny}_bg={bg_color}/{inner_dir_name}".format(**self.config)
 		include_shiny = self.config['include_shiny']
+		include_back = self.config['include_back']
 		output_width = self.config['output_size']
 		debug = self.config['debug']
 		resize_image = self.config['force_resize']
@@ -166,21 +171,33 @@ class ImageProcessor:
 		for folder_prefix, pkmn_dir in INPUT_IMAGE_DIRS:
 			original_dir = pkmn_dir + "*.png"
 			shiny_dir = pkmn_dir + "shiny/*.png"
+			back_sprite_dir = pkmn_dir + "back/*.png"
+			back_shiny_dir = pkmn_dir + "shiny/back/*.png"
+			all_img_dirs = [(original_dir, False, False)]
 
 			if include_shiny:
-				all_img_dirs = [(original_dir, False), (shiny_dir, True)]
-			else:
-				all_img_dirs = [(original_dir, False)]
+				all_img_dirs += [(shiny_dir, True, False)]
+			if include_back:
+				all_img_dirs += [(back_sprite_dir, False, True)]
+			if include_back and include_shiny:
+				all_img_dirs += [(back_shiny_dir, True, True)]
 
-			for img_dir,is_shiny in all_img_dirs:
+			for img_dir,is_shiny, is_back in all_img_dirs:
 
 				shiny_prefix = ""
+				back_prefix = ""
 				if is_shiny:
 					shiny_prefix = "shiny_"
+				if is_back:
+					back_prefix = "back_"
 
 				img_files = glob.glob(img_dir)
 
 				print("Processing dir: {}".format(img_dir))
+
+				if len(img_files) == 0:
+					print("!!!! No image files found in dir: {}".format(img_dir))
+					continue
 
 				assert len(img_files) > 0
 
@@ -253,7 +270,7 @@ class ImageProcessor:
 
 
 							for pkmn_type in pkmn_types:
-								filepath = './{}/{}/{}{}_{}.jpg'.format(output_dir, pkmn_type, shiny_prefix, folder_prefix, pkmn_number)
+								filepath = './{}/{}/{}_{}_{}_{}.jpg'.format(output_dir, pkmn_type, shiny_prefix, back_prefix, folder_prefix, pkmn_number)
 								if debug:
 									print("=== in classification output mode == type is: {}".format(pkmn_type))
 									print("Save filepath is: {}, raw file name is: {}".format(filepath, file))
