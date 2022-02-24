@@ -143,11 +143,11 @@ class ImageProcessor:
 	def process_images(self):
 		# for classification mode, the inner dir name is given by the type, so we don't specify it here
 		if self.config['classification_mode']:
-			output_dir = "{output_dir_name}_size={output_size}_shiny={include_shiny}__bg={bg_color}_mainclass={main_class_only}_groupclasses={group_classes}".format(**self.config)
+			output_dir = "{output_dir_name}_size={output_size}_shiny={include_shiny}_incude_back={include_back}_bg={bg_color}_mainclass={main_class_only}_groupclasses={group_classes}".format(**self.config)
 		else:
 			output_dir = "{output_dir_name}_size={output_size}_shiny={include_shiny}_bg={bg_color}/{inner_dir_name}".format(**self.config)
 		include_shiny = self.config['include_shiny']
-		inclue_back = self.config['include_back']
+		include_back = self.config['include_back']
 		output_width = self.config['output_size']
 		debug = self.config['debug']
 		resize_image = self.config['force_resize']
@@ -194,6 +194,10 @@ class ImageProcessor:
 				img_files = glob.glob(img_dir)
 
 				print("Processing dir: {}".format(img_dir))
+
+				if len(img_files) == 0:
+					print("!!!! No image files found in dir: {}".format(img_dir))
+					continue
 
 				assert len(img_files) > 0
 
