@@ -246,7 +246,8 @@ class UNetConditional(nn.Module):
     def __init__(self, input_channels = 1, output_channels = 3, hidden_channels=32, 
                  input_dim = 96, z_dim = 32, use_class_embed = False, class_embed_size = 16,
                  use_conditional_layer_arch = False, use_mapping_network = False, 
-                 map_network_hidden_size = 16, dropout_prob = 0.5, use_dropout = True):
+                 map_network_hidden_size = 16, dropout_prob = 0.5, use_dropout = True,
+                 vocab_size  = NUM_PKMN_TYPES):
         super(UNetConditional, self).__init__()
 
         assert input_dim in set([64, 96])
@@ -257,14 +258,15 @@ class UNetConditional(nn.Module):
         self.use_class_embed = use_class_embed
         self.use_conditional_layer_arch = use_conditional_layer_arch
         self.use_mapping_network = use_mapping_network
+        self.vocab_size = vocab_size
 
         if use_class_embed:
             self.class_embed_size = class_embed_size
             self.final_dim = self.z_dim + self.class_embed_size
-            self.class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = class_embed_size)
+            self.class_embedding = nn.Embedding(num_embeddings = vocab_size, embedding_dim = class_embed_size)
         else:
-            self.final_dim = self.z_dim + NUM_PKMN_TYPES # one-hot encode
-            self.class_embed_size = NUM_PKMN_TYPES
+            self.final_dim = self.z_dim + vocab_size # one-hot encode
+            self.class_embed_size = vocab_size
 
         if self.use_mapping_network:
             self.mapping_network = MappingNetwork(self.final_dim, map_network_hidden_size, self.final_dim)
@@ -312,7 +314,7 @@ class UNetConditional(nn.Module):
 
         else:
             # shape (bs, 18)
-            label_tensor = F.one_hot(class_labels, num_classes = NUM_PKMN_TYPES)
+            label_tensor = F.one_hot(class_labels, num_classes = self.vocab_size)
 
         noise = noise_vec.view(bs, self.z_dim)
         label_tensor = label_tensor.view(bs, self.class_embed_size)
@@ -373,10 +375,11 @@ class UNetConditionalImage(nn.Module):
     def __init__(self, input_channels = 1, output_channels = 3, hidden_channels=32, 
                  input_dim = 96, z_dim = 32, use_class_embed = False, class_embed_size = 16,
                  use_conditional_layer_arch = False, use_mapping_network = False, 
-                 map_network_hidden_size = 16, dropout_prob = 0.5, use_dropout = True):
+                 map_network_hidden_size = 16, dropout_prob = 0.5, use_dropout = True,
+                 vocab_size = NUM_PKMN_TYPES):
         super(UNetConditionalImage, self).__init__()
 
-        assert input_dim in set([64, 96])
+        #assert input_dim in set([64, 96])
 
         # we tile the noise vector to make the input image, so it has to be divisible by it
         self.z_dim = z_dim
@@ -384,14 +387,15 @@ class UNetConditionalImage(nn.Module):
         self.use_class_embed = use_class_embed
         self.use_conditional_layer_arch = use_conditional_layer_arch
         self.use_mapping_network = use_mapping_network
+        self.vocab_size = vocab_size
 
         if use_class_embed:
             self.class_embed_size = class_embed_size
             self.final_dim = self.z_dim + self.class_embed_size
-            self.class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = class_embed_size)
+            self.class_embedding = nn.Embedding(num_embeddings = vocab_size, embedding_dim = class_embed_size)
         else:
-            self.final_dim = self.z_dim + NUM_PKMN_TYPES # one-hot encode
-            self.class_embed_size = NUM_PKMN_TYPES
+            self.final_dim = self.z_dim + vocab_size # one-hot encode
+            self.class_embed_size = vocab_size
 
         if self.use_mapping_network:
             self.mapping_network = MappingNetwork(self.final_dim, map_network_hidden_size, self.final_dim)
@@ -442,7 +446,7 @@ class UNetConditionalImage(nn.Module):
             class_embed = self.class_embedding(class_labels)
         else:
             # shape (bs, 18)
-            class_embed = F.one_hot(class_labels, num_classes = NUM_PKMN_TYPES)
+            class_embed = F.one_hot(class_labels, num_classes = self.vocab_size)
             
         # similar to the discriminator, we create a new channel for the class input
         
