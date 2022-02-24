@@ -357,4 +357,124 @@ class UNetConditional(nn.Module):
         xn = self.downfeature(x12)
         # NOTE: We use a tanh here to make sure the output image is in the range [-1, 1], the original architecture
         # used a sigmoid
-        return self.tanh(xn)        
+        return self.tanh(xn)
+
+
+class UNetConditionalImage(nn.Module):
+    '''
+    UNet Class that implements a conditional GAN (labels are also provided)
+    A series of 4 contracting blocks followed by 4 expanding blocks to 
+    transform an input image into the corresponding paired image, with an upfeature
+    layer at the start and a downfeature layer at the end.
+    Values:
+        input_channels: the number of channels to expect from a given input
+        output_channels: the number of channels to expect for a given output
+    '''
+    def __init__(self, input_channels = 1, output_channels = 3, hidden_channels=32, 
+                 input_dim = 96, z_dim = 32, use_class_embed = False, class_embed_size = 16,
+                 use_conditional_layer_arch = False, use_mapping_network = False, 
+                 map_network_hidden_size = 16, dropout_prob = 0.5, use_dropout = True):
+        super(UNetConditionalImage, self).__init__()
+
+        assert input_dim in set([64, 96])
+
+        # we tile the noise vector to make the input image, so it has to be divisible by it
+        self.z_dim = z_dim
+        self.input_dim = input_dim
+        self.use_class_embed = use_class_embed
+        self.use_conditional_layer_arch = use_conditional_layer_arch
+        self.use_mapping_network = use_mapping_network
+
+        if use_class_embed:
+            self.class_embed_size = class_embed_size
+            self.final_dim = self.z_dim + self.class_embed_size
+            self.class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = class_embed_size)
+        else:
+            self.final_dim = self.z_dim + NUM_PKMN_TYPES # one-hot encode
+            self.class_embed_size = NUM_PKMN_TYPES
+
+        if self.use_mapping_network:
+            self.mapping_network = MappingNetwork(self.final_dim, map_network_hidden_size, self.final_dim)
+        if self.use_conditional_layer_arch:
+            self.intermediate_embed_dim = 1024 # corresponds to hidden_channels = 16
+            # 1024 is the size of the layer after all the contracting paths
+            self.intermediate_mapping_network = MappingNetwork(self.intermediate_embed_dim + self.class_embed_size, map_network_hidden_size, self.intermediate_embed_dim)        
+
+        # not needed if you do the channel concatenation thing
+        assert self.input_dim % self.class_embed_size == 0
+        
+        self.upfeature = FeatureMapBlock(input_channels, hidden_channels)
+        self.contract1 = ContractingBlock(hidden_channels, use_dropout=use_dropout, dropout_prob = dropout_prob)
+        self.contract2 = ContractingBlock(hidden_channels * 2, use_dropout=use_dropout, dropout_prob = dropout_prob)
+        self.contract3 = ContractingBlock(hidden_channels * 4, use_dropout=use_dropout, dropout_prob = dropout_prob)
+        self.contract4 = ContractingBlock(hidden_channels * 8)
+        self.contract5 = ContractingBlock(hidden_channels * 16)
+        self.contract6 = ContractingBlock(hidden_channels * 32)
+        self.expand0 = ExpandingBlock(hidden_channels * 64)
+        self.expand1 = ExpandingBlock(hidden_channels * 32)
+        self.expand2 = ExpandingBlock(hidden_channels * 16)
+        self.expand3 = ExpandingBlock(hidden_channels * 8)
+        self.expand4 = ExpandingBlock(hidden_channels * 4)
+        self.expand5 = ExpandingBlock(hidden_channels * 2)
+        self.downfeature = FeatureMapBlock(hidden_channels, output_channels)
+        self.tanh = torch.nn.Tanh()
+
+    def forward(self, noise_image, class_labels):
+        '''
+        Function for completing a forward pass of UNet: 
+        Given an image tensor, passes it through U-Net and returns the output.
+        Parameters:
+            noise_image: noise tensor of shape (n_samples, 1, input_dim, input_dim)
+            labels: label tenosr of shape (n_samples, 1)
+            Input eventually becomes shape (n_samples, 2, input_dim, input_dim) after conatenating label/noise as in
+            the discriminator
+            Tiled to create an image tensor of shape (batch size, 1, input_dim, input_dim) which is the input
+            to the Unet architecture.
+        '''
+        
+        # we need to tile the noise vec to produce a (bs, 1, output_dim, output_dim) image
+        bs = noise_image.shape[0]
+        class_labels = class_labels.long()
+
+        # There are two ways to do this: 
+        # We just lookup class embeddings and concatenate with the noise tensor or use one-hot encoding
+        if self.use_class_embed:
+            class_embed = self.class_embedding(class_labels)
+        else:
+            # shape (bs, 18)
+            class_embed = F.one_hot(class_labels, num_classes = NUM_PKMN_TYPES)
+            
+        # similar to the discriminator, we create a new channel for the class input
+        
+        first_dim_tile_size_class = int(self.input_dim / self.class_embed_size)
+        class_embed_tiled = class_embed.tile((first_dim_tile_size_class,self.input_dim)).view(bs, 1, self.input_dim, self.input_dim)
+        
+
+        # concat noise and labels
+        noise_and_label_input = torch.cat((noise_image, class_embed_tiled), dim = 1)
+
+        # The second way is more complicated, we need to inject the class at all the expand layers
+        x0 = self.upfeature(noise_and_label_input)
+        x1 = self.contract1(x0)
+        x2 = self.contract2(x1)
+        x3 = self.contract3(x2)
+        x4 = self.contract4(x3)
+        x5 = self.contract5(x4)
+        x6 = self.contract6(x5)
+        #print("Shape after final contraction is: {}".format(x6.shape))
+        if self.use_conditional_layer_arch:
+            # x6 has shape (bs, self.intermediate_embed_dim, 1, 1)
+            label_tensor_reshaped = label_tensor.view(bs, self.class_embed_size, 1, 1)
+            x6_concat = torch.cat((x6, label_tensor_reshaped), dim = 1).view(bs, self.intermediate_embed_dim + self.class_embed_size)
+            x6_map_out = self.intermediate_mapping_network(x6_concat).view(bs, self.intermediate_embed_dim, 1, 1)
+            x6 = x6_map_out
+        x7 = self.expand0(x6, x5)
+        x8 = self.expand1(x7, x4)
+        x9 = self.expand2(x8, x3)
+        x10 = self.expand3(x9, x2)
+        x11 = self.expand4(x10, x1)
+        x12 = self.expand5(x11, x0)
+        xn = self.downfeature(x12)
+        # NOTE: We use a tanh here to make sure the output image is in the range [-1, 1], the original architecture
+        # used a sigmoid
+        return self.tanh(xn)          
