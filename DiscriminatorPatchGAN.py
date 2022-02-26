@@ -179,7 +179,7 @@ class DiscriminatorPatchGANConditional(nn.Module):
         x3 = self.contract3(x2)
         x4 = self.contract4(x3)
         # add noise before the final layer too
-        if self.use_gaussian_noise:
-            x4 = self.gauss1(x4)
+        #if self.use_gaussian_noise:
+            #x4 = self.gauss1(x4)
         xn = self.final(x4)
         return xn        
