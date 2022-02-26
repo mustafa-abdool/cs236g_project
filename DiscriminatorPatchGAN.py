@@ -3,6 +3,7 @@ from torch import nn
 torch.manual_seed(0) # Set for testing purposes, please do not change!
 import torch.nn.functional as F
 from pkmn_constants import *
+from GaussianNoise import GaussianNoise
 
 class FeatureMapBlock(nn.Module):
     '''
@@ -35,8 +36,12 @@ class ContractingBlock(nn.Module):
     Values:
         input_channels: the number of channels to expect from a given input
     '''
-    def __init__(self, input_channels, use_dropout=False, use_bn=True, dropout_prob = 0.5):
+    def __init__(self, input_channels, use_dropout=False, use_bn=True, dropout_prob = 0.5, 
+        use_gaussian_noise = False, gaussian_noise_std = 0.1):
         super(ContractingBlock, self).__init__()
+
+        self.use_gaussian_noise = use_gaussian_noise
+        self.gaussian_noise_std = gaussian_noise_std
         self.conv1 = nn.Conv2d(input_channels, input_channels * 2, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(input_channels * 2, input_channels * 2, kernel_size=3, padding=1)
         self.activation = nn.LeakyReLU(0.2)
@@ -47,6 +52,10 @@ class ContractingBlock(nn.Module):
         if use_dropout:
             self.dropout = nn.Dropout(p = dropout_prob)
         self.use_dropout = use_dropout
+        if use_gaussian_noise:
+            print("==== Using gaussian noise with std: {} ====".format(gaussian_noise_std))
+            self.gauss1 = GaussianNoise(std = gaussian_noise_std)
+            self.gauss2 = GaussianNoise(std = gaussian_noise_std)
 
     def forward(self, x):
         '''
@@ -55,12 +64,16 @@ class ContractingBlock(nn.Module):
         Parameters:
             x: image tensor of shape (batch size, channels, height, width)
         '''
+        if self.use_gaussian_noise:
+            x = self.gauss1(x)
         x = self.conv1(x)
         if self.use_bn:
             x = self.batchnorm(x)
         if self.use_dropout:
             x = self.dropout(x)
         x = self.activation(x)
+        if self.use_gaussian_noise:
+            x = self.gauss2(x)
         x = self.conv2(x)
         if self.use_bn:
             x = self.batchnorm(x)
@@ -114,7 +127,8 @@ class DiscriminatorPatchGANConditional(nn.Module):
         hidden_channels: the initial number of discriminator convolutional filters
     '''
     def __init__(self, input_channels=3, hidden_channels=8, 
-                class_embed_size = 16, input_image_dim = 96, use_dropout = False, dropout_prob = 0.5):
+                class_embed_size = 16, input_image_dim = 96, use_dropout = False, 
+                dropout_prob = 0.5, use_gaussian_noise = False, gaussian_noise_std = 0.1):
         super(DiscriminatorPatchGANConditional, self).__init__()
 
 
@@ -122,15 +136,18 @@ class DiscriminatorPatchGANConditional(nn.Module):
         self.class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = class_embed_size)
         self.input_image_dim = input_image_dim
         self.class_embed_size = class_embed_size
+        self.use_gaussian_noise = use_gaussian_noise
+        if self.use_gaussian_noise:
+            self.gauss1 = GaussianNoise(std = gaussian_noise_std)
 
         assert input_image_dim % self.class_embed_size == 0
 
         # since we add an additional channel for the class map, we have to add +1 here,
         self.upfeature = FeatureMapBlock(input_channels + 1, hidden_channels)
-        self.contract1 = ContractingBlock(hidden_channels, use_bn=False, use_dropout = use_dropout, dropout_prob = dropout_prob)
-        self.contract2 = ContractingBlock(hidden_channels * 2, use_dropout = use_dropout, dropout_prob = dropout_prob)
-        self.contract3 = ContractingBlock(hidden_channels * 4, use_dropout = use_dropout, dropout_prob = dropout_prob)
-        self.contract4 = ContractingBlock(hidden_channels * 8, use_dropout = use_dropout, dropout_prob = dropout_prob)
+        self.contract1 = ContractingBlock(hidden_channels, use_bn=False, use_dropout = use_dropout, dropout_prob = dropout_prob, use_gaussian_noise = use_gaussian_noise, gaussian_noise_std = gaussian_noise_std)
+        self.contract2 = ContractingBlock(hidden_channels * 2, use_dropout = use_dropout, dropout_prob = dropout_prob, use_gaussian_noise = use_gaussian_noise, gaussian_noise_std = gaussian_noise_std)
+        self.contract3 = ContractingBlock(hidden_channels * 4, use_dropout = use_dropout, dropout_prob = dropout_prob, use_gaussian_noise = use_gaussian_noise, gaussian_noise_std = gaussian_noise_std)
+        self.contract4 = ContractingBlock(hidden_channels * 8, use_dropout = use_dropout, dropout_prob = dropout_prob, use_gaussian_noise = use_gaussian_noise, gaussian_noise_std = gaussian_noise_std)
         #### START CODE HERE ####
         # Basically, you want to map into a 1 channel image
         self.final = nn.Conv2d(hidden_channels * 16, 1, kernel_size=1)
@@ -138,7 +155,7 @@ class DiscriminatorPatchGANConditional(nn.Module):
 
     # PatchGAN input is (x,y) where x and y are both are images (cause it's used for image2image translation)
     # not that the output is NOT passed through a sigmoid, so we have to use BCEWithLogitsLoss
-    # x is shape (bs, 3, 96, 96)
+    # x is shape (bs, 3, input_dim, input_dim)
     # class_labels is shape: (bs, 1)
     def forward(self, x, class_labels):
 
@@ -151,7 +168,7 @@ class DiscriminatorPatchGANConditional(nn.Module):
         first_dim_tile_size = int(self.input_image_dim / self.class_embed_size)
         class_embed_tiled = class_embed.tile((first_dim_tile_size,self.input_image_dim)).view(bs, 1, self.input_image_dim, self.input_image_dim)
 
-        image_and_class_embed = torch.cat((x, class_embed_tiled), dim = 1)        
+        image_and_class_embed = torch.cat((x, class_embed_tiled), dim = 1)
 
         # should now be of shape (bs, 4, 96, 96)
         x = image_and_class_embed
@@ -161,5 +178,8 @@ class DiscriminatorPatchGANConditional(nn.Module):
         x2 = self.contract2(x1)
         x3 = self.contract3(x2)
         x4 = self.contract4(x3)
+        # add noise before the final layer too
+        if self.use_gaussian_noise:
+            x4 = self.gauss1(x4)
         xn = self.final(x4)
         return xn        

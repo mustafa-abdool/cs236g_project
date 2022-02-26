@@ -6,7 +6,102 @@ from pkmn_constants import *
 from MappingNetwork import MappingNetwork
 
 
-# GRADED FUNCTION: crop
+# Perform adaptive normalization with 
+class AdaINClassAdapativeLayer(nn.Module):
+    '''
+    AdaIN Class
+    Values:
+        channels: the number of channels the image has, a scalar
+
+    '''
+
+    def __init__(self, channels, class_embed_size = 32):
+        super().__init__()
+
+        # Normalize the input per-dimension
+        self.instance_norm = nn.InstanceNorm2d(channels)
+        self.class_embed_size = class_embed_size
+
+        self.class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = class_embed_size)
+        self.style_scale_transform = nn.Linear(class_embed_size, channels)
+        self.style_shift_transform = nn.Linear(class_embed_size, channels)
+
+    def forward(self, image, class_labels = None):
+        '''
+        Function for completing a forward pass of AdaIN: Given an image and intermediate noise vector w, 
+        returns the normalized image that has been scaled and shifted by the style.
+        Parameters:
+            image: the feature map of shape (n_samples, channels, width, height)
+            w: the intermediate noise vector, shape: (n_samples, w_dim)
+            class_labels: the labels for each image you are trying to generate (only used if use_class_style = True). Shape (n_samples, 1)
+        '''
+
+        # todo (Moose): do we need this in this architecture ?
+
+        # normalized_image = self.instance_norm(image)
+        normalized_image = image
+
+        embeddings = self.class_embedding(class_labels).view(-1, self.class_embed_size)
+        style_scale = self.style_scale_transform(embeddings)[:, :, None, None]
+        style_shift = self.style_shift_transform(embeddings)[:, :, None, None]
+
+    
+        # Calculate the transformed image
+        transformed_image = style_scale * normalized_image + style_shift
+        return transformed_image
+    
+    def get_style_scale_transform(self):
+        return self.style_scale_transform
+    
+    def get_style_shift_transform(self):
+        return self.style_shift_transform
+    
+    def get_self(self):
+        return self 
+
+class InjectNoise(nn.Module):
+    '''
+    Inject Noise Class
+    Values:
+        channels: the number of channels the image has, a scalar
+    '''
+    def __init__(self, channels):
+        super().__init__()
+        self.weight = nn.Parameter( # You use nn.Parameter so that these weights can be optimized
+            # Initiate the weights for the channels from a random normal distribution
+            #### START CODE HERE ####
+            
+            # you have one weight per channel and it starts off by being initialized using N(0,1)
+            torch.randn((1, channels, 1, 1))
+            
+            #### END CODE HERE ####
+        )
+
+    def forward(self, image):
+        '''
+        Function for completing a forward pass of InjectNoise: Given an image, 
+        returns the image with random noise added.
+        Parameters:
+            image: the feature map of shape (n_samples, channels, width, height)
+        '''
+        # Set the appropriate shape for the noise!
+        
+        #### START CODE HERE ####
+        n_samples, channels, width, height = image.shape
+        # basically you want to apply the noise to all channels at once
+        # you only ahve one channel of truly random noise that is applied across all channels
+        noise_shape = (n_samples, 1, width, height)
+        #### END CODE HERE ####
+        
+        noise = torch.randn(noise_shape, device=image.device) # Creates the random noise
+        return image + self.weight * noise # Applies to image after multiplying by the weight for each channel
+    
+    def get_weight(self):
+        return self.weight
+    
+    def get_self(self):
+        return self
+
 def crop(image, new_shape):
     '''
     Function for cropping an image tensor: Given an image tensor and the new shape,
@@ -94,12 +189,15 @@ class ExpandingBlock(nn.Module):
     Values:
         input_channels: the number of channels to expect from a given input
     '''
-    def __init__(self, input_channels, use_dropout=False, use_bn=True):
+    def __init__(self, input_channels, use_dropout=False, use_bn=True, inject_noise = False):
         super(ExpandingBlock, self).__init__()
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         self.conv1 = nn.Conv2d(input_channels, input_channels // 2, kernel_size=2)
         self.conv2 = nn.Conv2d(input_channels, input_channels // 2, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(input_channels // 2, input_channels // 2, kernel_size=2, padding=1)
+        # we inject noise after convolutions, but before batchnorm as in StyleGAN
+        if inject_noise:
+            self.noise_layer = InjectNoise(input_channels)        
         if use_bn:
             self.batchnorm = nn.BatchNorm2d(input_channels // 2)
         self.use_bn = use_bn
@@ -107,6 +205,8 @@ class ExpandingBlock(nn.Module):
         if use_dropout:
             self.dropout = nn.Dropout()
         self.use_dropout = use_dropout
+        self.inject_noise = inject_noise
+
 
     def forward(self, x, skip_con_x):
         '''
@@ -117,6 +217,8 @@ class ExpandingBlock(nn.Module):
             skip_con_x: the image tensor from the contracting path (from the opposing block of x)
                     for the skip connection
         '''
+        if self.inject_noise:
+            x = self.noise_layer(x)
         x = self.upsample(x)
         x = self.conv1(x)
         skip_con_x = crop(skip_con_x, x.shape)
@@ -247,10 +349,11 @@ class UNetConditional(nn.Module):
                  input_dim = 96, z_dim = 32, use_class_embed = False, class_embed_size = 16,
                  use_conditional_layer_arch = False, use_mapping_network = False, 
                  map_network_hidden_size = 16, dropout_prob = 0.5, use_dropout = True,
-                 vocab_size  = NUM_PKMN_TYPES):
+                 vocab_size  = NUM_PKMN_TYPES, inject_noise = False, use_class_adapt_layer = False):
         super(UNetConditional, self).__init__()
 
         assert input_dim in set([64, 96])
+        assert z_dim in set([16, 32])
 
         # we tile the noise vector to make the input image, so it has to be divisible by it
         self.z_dim = z_dim
@@ -259,6 +362,8 @@ class UNetConditional(nn.Module):
         self.use_conditional_layer_arch = use_conditional_layer_arch
         self.use_mapping_network = use_mapping_network
         self.vocab_size = vocab_size
+        self.inject_noise = inject_noise
+        self.use_class_adapt_layer = use_class_adapt_layer
 
         if use_class_embed:
             self.class_embed_size = class_embed_size
@@ -271,7 +376,7 @@ class UNetConditional(nn.Module):
         if self.use_mapping_network:
             self.mapping_network = MappingNetwork(self.final_dim, map_network_hidden_size, self.final_dim)
         if self.use_conditional_layer_arch:
-            self.intermediate_embed_dim = 1024 # corresponds to hidden_channels = 16
+            self.intermediate_embed_dim = 1024 if z_dim == 32 else 768 # corresponds to hidden_channels = 16
             # 1024 is the size of the layer after all the contracting paths
             self.intermediate_mapping_network = MappingNetwork(self.intermediate_embed_dim + self.class_embed_size, map_network_hidden_size, self.intermediate_embed_dim)        
 
@@ -284,14 +389,23 @@ class UNetConditional(nn.Module):
         self.contract4 = ContractingBlock(hidden_channels * 8)
         self.contract5 = ContractingBlock(hidden_channels * 16)
         self.contract6 = ContractingBlock(hidden_channels * 32)
-        self.expand0 = ExpandingBlock(hidden_channels * 64)
-        self.expand1 = ExpandingBlock(hidden_channels * 32)
-        self.expand2 = ExpandingBlock(hidden_channels * 16)
-        self.expand3 = ExpandingBlock(hidden_channels * 8)
-        self.expand4 = ExpandingBlock(hidden_channels * 4)
-        self.expand5 = ExpandingBlock(hidden_channels * 2)
+        self.expand0 = ExpandingBlock(hidden_channels * 64, inject_noise = self.inject_noise)
+        self.expand1 = ExpandingBlock(hidden_channels * 32, inject_noise = self.inject_noise)
+        self.expand2 = ExpandingBlock(hidden_channels * 16, inject_noise = self.inject_noise)
+        self.expand3 = ExpandingBlock(hidden_channels * 8, inject_noise = self.inject_noise)
+        self.expand4 = ExpandingBlock(hidden_channels * 4, inject_noise = self.inject_noise)
+        self.expand5 = ExpandingBlock(hidden_channels * 2, inject_noise = self.inject_noise)
         self.downfeature = FeatureMapBlock(hidden_channels, output_channels)
         self.tanh = torch.nn.Tanh()
+
+        if self.use_class_adapt_layer:
+            print("Using class adapative layer!!!")
+            self.class_layer_2 = AdaINClassAdapativeLayer(hidden_channels * 2) # after contract1
+            self.class_layer_4 = AdaINClassAdapativeLayer(hidden_channels * 4) # after expand3
+            self.class_layer_8 = AdaINClassAdapativeLayer(hidden_channels * 8) # after contract3
+            self.class_layer_16 = AdaINClassAdapativeLayer(hidden_channels * 16) # after expand1
+            self.class_layer_32 = AdaINClassAdapativeLayer(hidden_channels * 32) # after expand0
+            self.class_layer_64 = AdaINClassAdapativeLayer(hidden_channels * 64) # after contract6
 
     def forward(self, noise_vec, class_labels):
         '''
@@ -331,19 +445,22 @@ class UNetConditional(nn.Module):
         else:
             mapping_output = noise_and_label_input
             
-        
         tiled_input = mapping_output.tile((first_dim_tile_size,self.input_dim)).view(bs, 1, self.input_dim, self.input_dim)
 
 
-        # The second way is more complicated, we need to inject the class at all the expand layers
         x0 = self.upfeature(tiled_input)
         x1 = self.contract1(x0)
+        if self.use_class_adapt_layer:
+            x1 = self.class_layer_2(x1, class_labels)
         x2 = self.contract2(x1)
         x3 = self.contract3(x2)
+        if self.use_class_adapt_layer:
+            x3 = self.class_layer_8(x3, class_labels)        
         x4 = self.contract4(x3)
         x5 = self.contract5(x4)
         x6 = self.contract6(x5)
-        #print("Shape after final contraction is: {}".format(x6.shape))
+        if self.use_class_adapt_layer:
+            x6 = self.class_layer_64(x6, class_labels)
         if self.use_conditional_layer_arch:
             # x6 has shape (bs, self.intermediate_embed_dim, 1, 1)
             label_tensor_reshaped = label_tensor.view(bs, self.class_embed_size, 1, 1)
@@ -351,9 +468,15 @@ class UNetConditional(nn.Module):
             x6_map_out = self.intermediate_mapping_network(x6_concat).view(bs, self.intermediate_embed_dim, 1, 1)
             x6 = x6_map_out
         x7 = self.expand0(x6, x5)
+        if self.use_class_adapt_layer:
+            x7 = self.class_layer_32(x7, class_labels)        
         x8 = self.expand1(x7, x4)
+        if self.use_class_adapt_layer:
+            x8 = self.class_layer_16(x8, class_labels)          
         x9 = self.expand2(x8, x3)
         x10 = self.expand3(x9, x2)
+        if self.use_class_adapt_layer:
+            x10 = self.class_layer_4(x10,class_labels)           
         x11 = self.expand4(x10, x1)
         x12 = self.expand5(x11, x0)
         xn = self.downfeature(x12)
@@ -376,7 +499,7 @@ class UNetConditionalImage(nn.Module):
                  input_dim = 96, z_dim = 32, use_class_embed = False, class_embed_size = 16,
                  use_conditional_layer_arch = False, use_mapping_network = False, 
                  map_network_hidden_size = 16, dropout_prob = 0.5, use_dropout = True,
-                 vocab_size = NUM_PKMN_TYPES):
+                 vocab_size = NUM_PKMN_TYPES, inject_noise = False, use_class_adapt_layer = False):
         super(UNetConditionalImage, self).__init__()
 
         #assert input_dim in set([64, 96])
@@ -388,6 +511,8 @@ class UNetConditionalImage(nn.Module):
         self.use_conditional_layer_arch = use_conditional_layer_arch
         self.use_mapping_network = use_mapping_network
         self.vocab_size = vocab_size
+        self.inject_noise = inject_noise
+        self.use_class_adapt_layer = use_class_adapt_layer
 
         if use_class_embed:
             self.class_embed_size = class_embed_size
@@ -414,14 +539,23 @@ class UNetConditionalImage(nn.Module):
         self.contract4 = ContractingBlock(hidden_channels * 8)
         self.contract5 = ContractingBlock(hidden_channels * 16)
         self.contract6 = ContractingBlock(hidden_channels * 32)
-        self.expand0 = ExpandingBlock(hidden_channels * 64)
-        self.expand1 = ExpandingBlock(hidden_channels * 32)
-        self.expand2 = ExpandingBlock(hidden_channels * 16)
-        self.expand3 = ExpandingBlock(hidden_channels * 8)
-        self.expand4 = ExpandingBlock(hidden_channels * 4)
-        self.expand5 = ExpandingBlock(hidden_channels * 2)
+        self.expand0 = ExpandingBlock(hidden_channels * 64, inject_noise = self.inject_noise)
+        self.expand1 = ExpandingBlock(hidden_channels * 32, inject_noise = self.inject_noise)
+        self.expand2 = ExpandingBlock(hidden_channels * 16, inject_noise = self.inject_noise)
+        self.expand3 = ExpandingBlock(hidden_channels * 8, inject_noise = self.inject_noise)
+        self.expand4 = ExpandingBlock(hidden_channels * 4, inject_noise = self.inject_noise)
+        self.expand5 = ExpandingBlock(hidden_channels * 2, inject_noise = self.inject_noise)
         self.downfeature = FeatureMapBlock(hidden_channels, output_channels)
         self.tanh = torch.nn.Tanh()
+
+        if self.use_class_adapt_layer:
+            print("Using class adapative layer!!!")
+            self.class_layer_2 = AdaINClassAdapativeLayer(hidden_channels * 2)
+            self.class_layer_4 = AdaINClassAdapativeLayer(hidden_channels * 4)
+            self.class_layer_8 = AdaINClassAdapativeLayer(hidden_channels * 8)
+            self.class_layer_16 = AdaINClassAdapativeLayer(hidden_channels * 16)
+            self.class_layer_32 = AdaINClassAdapativeLayer(hidden_channels * 32)
+            self.class_layer_64 = AdaINClassAdapativeLayer(hidden_channels * 64)
 
     def forward(self, noise_image, class_labels):
         '''
@@ -457,15 +591,19 @@ class UNetConditionalImage(nn.Module):
         # concat noise and labels
         noise_and_label_input = torch.cat((noise_image, class_embed_tiled), dim = 1)
 
-        # The second way is more complicated, we need to inject the class at all the expand layers
         x0 = self.upfeature(noise_and_label_input)
         x1 = self.contract1(x0)
+        if self.use_class_adapt_layer:
+            x1 = self.class_layer_2(x1, class_labels)
         x2 = self.contract2(x1)
         x3 = self.contract3(x2)
+        if self.use_class_adapt_layer:
+            x3 = self.class_layer_8(x3, class_labels)        
         x4 = self.contract4(x3)
         x5 = self.contract5(x4)
         x6 = self.contract6(x5)
-        #print("Shape after final contraction is: {}".format(x6.shape))
+        if self.use_class_adapt_layer:
+            x6 = self.class_layer_64(x6, class_labels)
         if self.use_conditional_layer_arch:
             # x6 has shape (bs, self.intermediate_embed_dim, 1, 1)
             label_tensor_reshaped = label_tensor.view(bs, self.class_embed_size, 1, 1)
@@ -473,12 +611,18 @@ class UNetConditionalImage(nn.Module):
             x6_map_out = self.intermediate_mapping_network(x6_concat).view(bs, self.intermediate_embed_dim, 1, 1)
             x6 = x6_map_out
         x7 = self.expand0(x6, x5)
+        if self.use_class_adapt_layer:
+            x7 = self.class_layer_32(x7, class_labels)        
         x8 = self.expand1(x7, x4)
+        if self.use_class_adapt_layer:
+            x8 = self.class_layer_16(x8, class_labels)          
         x9 = self.expand2(x8, x3)
         x10 = self.expand3(x9, x2)
+        if self.use_class_adapt_layer:
+            x10 = self.class_layer_4(x10, class_labels)           
         x11 = self.expand4(x10, x1)
         x12 = self.expand5(x11, x0)
         xn = self.downfeature(x12)
         # NOTE: We use a tanh here to make sure the output image is in the range [-1, 1], the original architecture
         # used a sigmoid
-        return self.tanh(xn)          
+        return self.tanh(xn)       

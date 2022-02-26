@@ -3,6 +3,7 @@ from torch import nn
 torch.manual_seed(0) # Set for testing purposes, please do not change!
 import torch.nn.functional as F
 from pkmn_constants import *
+from GaussianNoise import GaussianNoise
 
 """
 DCGAN discriminator with some custom modifications. Assumes 64x64 image input.
@@ -19,11 +20,23 @@ class DCDiscriminatorConditional(nn.Module):
     '''
     def __init__(self, im_chan=3, hidden_dim=64, early_dropout=0.2, 
                         mid_dropout = 0.25, late_dropout = 0.3,
-                        class_embed_size = 16):
+                        class_embed_size = 16, use_dropout = False, 
+                        use_gaussian_noise = False, gaussian_noise_std = 0.1):
         super(DCDiscriminatorConditional, self).__init__()
         self.input_image_dim = 64 # can't be changed easily
         self.class_embed_size = class_embed_size
-        self.late_dropout = late_dropout
+
+        if use_dropout:
+            print("==== Using dropout in discriminator!!")
+            self.early_dropout = early_dropout
+            self.mid_dropout = mid_dropout
+            self.late_dropout = late_dropout
+        else:
+            self.early_dropout = 0
+            self.mid_dropout = 0
+            self.late_dropout = 0            
+
+        self.gaussian_noise_std = gaussian_noise_std
         self.hidden_dim = hidden_dim
 
         # create the class embeddig
@@ -31,16 +44,17 @@ class DCDiscriminatorConditional(nn.Module):
 
         self.input_channels = im_chan + 1 # add an extra channel for the label
         self.disc = nn.Sequential(
-            self.make_disc_block(self.input_channels, hidden_dim, kernel_size = 4, stride =2, padding = 1),
-            nn.Dropout2d(p = early_dropout),
-            self.make_disc_block(hidden_dim, hidden_dim * 2, kernel_size = 4, stride =2, padding = 1),
-            self.make_disc_block(hidden_dim * 2, hidden_dim * 4, kernel_size = 4, stride =2, padding = 1),
-            nn.Dropout2d(p = mid_dropout),
-            self.make_disc_block(hidden_dim * 4, hidden_dim * 8, kernel_size = 4, stride =2, padding = 1),
-            self.make_disc_block(hidden_dim * 8, hidden_dim, kernel_size = 4, stride =1, padding = 0, final_layer = True)
+            self.make_disc_block(self.input_channels, hidden_dim, kernel_size = 4, stride =2, padding = 1, use_gaussian_noise = use_gaussian_noise),
+            nn.Dropout2d(p = self.early_dropout),
+            self.make_disc_block(hidden_dim, hidden_dim * 2, kernel_size = 4, stride =2, padding = 1, use_gaussian_noise = use_gaussian_noise),
+            self.make_disc_block(hidden_dim * 2, hidden_dim * 4, kernel_size = 4, stride =2, padding = 1, use_gaussian_noise = use_gaussian_noise),
+            nn.Dropout2d(p = self.mid_dropout),
+            self.make_disc_block(hidden_dim * 4, hidden_dim * 8, kernel_size = 4, stride =2, padding = 1, use_gaussian_noise = use_gaussian_noise),
+            self.make_disc_block(hidden_dim * 8, hidden_dim, kernel_size = 4, stride =1, padding = 0, final_layer = True, use_gaussian_noise = use_gaussian_noise)
         )
 
-    def make_disc_block(self, input_channels, output_channels, kernel_size=4, stride=2, padding = 0, final_layer=False):
+    def make_disc_block(self, input_channels, output_channels, kernel_size=4, 
+        stride=2, padding = 0, final_layer=False, use_gaussian_noise = False):
         '''
         Function to return a sequence of operations corresponding to a discriminator block of DCGAN;
         a convolution, a batchnorm (except in the final layer), and an activation (except in the final layer).
@@ -53,14 +67,22 @@ class DCDiscriminatorConditional(nn.Module):
                       (affects activation and batchnorm)
             padding: padding to use in the convolution layers
         '''
+
+        gaussian_noise_layer = nn.Identity()
+        if use_gaussian_noise:
+            print("=== Using gaussian noise with std: {}".format(self.gaussian_noise_std))
+            gaussian_noise_layer = GaussianNoise(std = self.gaussian_noise_std)
+
         if not final_layer:
             return nn.Sequential(
+                gaussian_noise_layer, 
                 nn.Conv2d(input_channels, output_channels, kernel_size, stride, padding),
                 nn.BatchNorm2d(output_channels),
                 nn.LeakyReLU(0.2, inplace=True),
             )
         else:
             return nn.Sequential(
+                gaussian_noise_layer,
                 nn.Conv2d(input_channels, output_channels, kernel_size, stride, padding),
                 nn.Flatten(),
                 # some people said dropout layers tend to work better

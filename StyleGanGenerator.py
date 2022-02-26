@@ -93,32 +93,49 @@ class AdaIN(nn.Module):
         w_dim: the dimension of the intermediate noise vector, a scalar
     '''
 
-    def __init__(self, channels, w_dim):
+    def __init__(self, channels, w_dim, use_class_style = False, class_embed_size = 32):
         super().__init__()
 
         # Normalize the input per-dimension
         self.instance_norm = nn.InstanceNorm2d(channels)
+        self.use_class_style = use_class_style
+        self.class_embed_size = class_embed_size
 
         # You want to map w to a set of style weights per channel.
         # Replace the Nones with the correct dimensions - keep in mind that 
         # both linear maps transform a w vector into style weights 
         # corresponding to the number of image channels.
 
-        # todo: can we add a class embedding here ? for each AdaIN layer
-        self.style_scale_transform = nn.Linear(w_dim, channels)
-        self.style_shift_transform = nn.Linear(w_dim, channels)
+        if self.use_class_style:
+            # todo: make this more general based on number of types
+            self.class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = class_embed_size)
+            self.style_scale_transform = nn.Linear(w_dim + class_embed_size, channels)
+            self.style_shift_transform = nn.Linear(w_dim + class_embed_size, channels)
+        else:
+            self.style_scale_transform = nn.Linear(w_dim, channels)
+            self.style_shift_transform = nn.Linear(w_dim, channels)
 
-    def forward(self, image, w):
+    def forward(self, image, w, class_labels = None):
         '''
         Function for completing a forward pass of AdaIN: Given an image and intermediate noise vector w, 
         returns the normalized image that has been scaled and shifted by the style.
         Parameters:
             image: the feature map of shape (n_samples, channels, width, height)
-            w: the intermediate noise vector
+            w: the intermediate noise vector, shape: (n_samples, w_dim)
+            class_labels: the labels for each image you are trying to generate (only used if use_class_style = True). Shape (n_samples, 1)
         '''
+
         normalized_image = self.instance_norm(image)
-        style_scale = self.style_scale_transform(w)[:, :, None, None]
-        style_shift = self.style_shift_transform(w)[:, :, None, None]
+
+        if self.use_class_style:
+            embeddings = self.class_embedding(class_labels).view(-1, self.class_embed_size)
+            # shape (bs, w_dim + class_embed_size)
+            w_and_embed_concat = torch.cat((w, embeddings), dim = 1)
+            style_scale = self.style_scale_transform(w_and_embed_concat)[:, :, None, None]
+            style_shift = self.style_shift_transform(w_and_embed_concat)[:, :, None, None]
+        else:
+            style_scale = self.style_scale_transform(w)[:, :, None, None]
+            style_shift = self.style_shift_transform(w)[:, :, None, None]
         
         # Calculate the transformed image
         transformed_image = style_scale * normalized_image + style_shift
@@ -145,7 +162,8 @@ class MicroStyleGANGeneratorBlock(nn.Module):
         starting_size: the size of the starting image
     '''
 
-    def __init__(self, in_chan, out_chan, w_dim, kernel_size, starting_size, use_upsample=True):
+    def __init__(self, in_chan, out_chan, w_dim, kernel_size, starting_size, use_upsample=True, 
+                 use_class_style = False, class_embed_size = 64):
         super().__init__()
         self.use_upsample = use_upsample
         # Replace the Nones in order to:
@@ -159,26 +177,31 @@ class MicroStyleGANGeneratorBlock(nn.Module):
         #### START CODE HERE ####
         if self.use_upsample:
             self.upsample = nn.Upsample(starting_size, mode='bilinear')
+        self.use_class_style = use_class_style
         self.conv = nn.Conv2d(in_chan, out_chan, kernel_size, padding=1) # Padding is used to maintain the image size
         self.inject_noise = InjectNoise(out_chan)
-        self.adain = AdaIN(out_chan, w_dim)
+        self.adain = AdaIN(out_chan, w_dim, use_class_style = use_class_style, class_embed_size = class_embed_size)
         self.activation = nn.LeakyReLU(negative_slope = 0.2)
         #### END CODE HERE ####
 
-    def forward(self, x, w):
+    def forward(self, x, w, class_labels = None):
         '''
         Function for completing a forward pass of MicroStyleGANGeneratorBlock: Given an x and w, 
         computes a StyleGAN generator block.
         Parameters:
             x: the input into the generator, feature map of shape (n_samples, channels, width, height)
             w: the intermediate noise vector
+            class_labels: true class labels, shape (bs, 1) [not always used]
         '''
         if self.use_upsample:
             x = self.upsample(x)
         x = self.conv(x)
         x = self.inject_noise(x)
         x = self.activation(x)
-        x = self.adain(x, w)
+        if self.use_class_style:
+            x = self.adain(x, w, class_labels)
+        else:
+            x = self.adain(x, w)
         return x
     
     #UNIT TEST COMMENT: Required for grading
@@ -313,7 +336,10 @@ class MicroStyleGANGeneratorConditional(nn.Module):
                  hidden_chan,
                  output_dim = 64,
                  use_class_embed = False,
-                 class_embed_size = 16):
+                 class_embed_size = 16,
+                 # whether or not to learn a different scale/shift parameter for each AdaIn block
+                 use_class_style = False, 
+                 class_style_embed_size = 64):
         super().__init__()
         # setup specifically for this
         assert output_dim in set([64,128])
@@ -323,13 +349,13 @@ class MicroStyleGANGeneratorConditional(nn.Module):
         
         # Typically this constant is initiated to all ones
         self.starting_constant = nn.Parameter(torch.ones(1, in_chan, 4, 4))
-        self.block0 = MicroStyleGANGeneratorBlock(in_chan, hidden_chan, w_dim, kernel_size, 4, use_upsample=False)
-        self.block1 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 8)
-        self.block2 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 16)
-        self.block3 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 32)
-        self.block4 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 64)
+        self.block0 = MicroStyleGANGeneratorBlock(in_chan, hidden_chan, w_dim, kernel_size, 4, use_upsample=False, use_class_style = use_class_style, class_embed_size = class_style_embed_size)
+        self.block1 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 8, use_class_style = use_class_style, class_embed_size = class_style_embed_size)
+        self.block2 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 16, use_class_style = use_class_style, class_embed_size = class_style_embed_size)
+        self.block3 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 32 ,use_class_style = use_class_style, class_embed_size = class_style_embed_size)
+        self.block4 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 64, use_class_style = use_class_style, class_embed_size = class_style_embed_size)
         if output_dim == 128:
-          self.block5 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 128)
+          self.block5 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 128, use_class_style = use_class_style, class_embed_size = class_style_embed_size)
         # You need to have a way of mapping from the output noise to an image, 
         # so you learn a 1x1 convolution to transform the e.g. 512 channels into 3 channels
         # (Note that this is simplified, with clipping used in the real StyleGAN)
@@ -340,7 +366,7 @@ class MicroStyleGANGeneratorConditional(nn.Module):
         if output_dim == 128:
           self.block5_to_image = nn.Conv2d(hidden_chan, out_chan, kernel_size=1)
 
-        # class embedding stuff
+        # class embedding stuff - if you want to concat W and the noise vector
         if use_class_embed:
             self.class_embed_size = class_embed_size
             self.input_dim = self.z_dim + self.class_embed_size
@@ -392,18 +418,18 @@ class MicroStyleGANGeneratorConditional(nn.Module):
 
         x = self.starting_constant
         w = self.map(noise_and_label_input)
-        x = self.block0(x, w)
+        x = self.block0(x, w, class_labels)
         
-        x_block1 = self.block1(x, w) # First generator run output
+        x_block1 = self.block1(x, w, class_labels) # First generator run output
         #x_block1_image = self.block1_to_image(x_block1)
         
-        x_block2 = self.block2(x_block1, w) # Second generator run output 
+        x_block2 = self.block2(x_block1, w, class_labels) # Second generator run output 
         #x_block2_image = self.block2_to_image(x_block2)
         
-        x_block3 = self.block3(x_block2, w) # third generator block output
+        x_block3 = self.block3(x_block2, w, class_labels) # third generator block output
         #x_block3_image = self.block3_to_image(x_block3)
         
-        x_block4 = self.block4(x_block3, w) # fourth generator block output
+        x_block4 = self.block4(x_block3, w, class_labels) # fourth generator block output
         x_block4_image = self.block4_to_image(x_block4)
                 
         #x_small_upsample = self.upsample_to_match_size(x_small_image, x_big_image) # Upsample first generator run output to be same size as second generator run output 
@@ -417,14 +443,15 @@ class MicroStyleGANGeneratorConditional(nn.Module):
         if return_intermediate:
             return interpolation, x_small_upsample, x_big_image
           
+        # need one more block
         if self.output_dim == 128:
-          x_block5 = self.block5(x_block4, w) # fourth generator block output
+          x_block5 = self.block5(x_block4, w, class_labels) # fourth generator block output
           x_block5_image = self.block5_to_image(x_block5)
 
           return tanh_func(x_block5_image)
         
         else:
-          return tanh_func(x_block4)
+          return tanh_func(x_block4_image)
     
     #UNIT TEST COMMENT: Required for grading
     def get_self(self):
