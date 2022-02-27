@@ -11,13 +11,13 @@ the generator. Seems like a std of 0.1 works well
 
 
 class GaussianNoise(nn.Module):
-    def __init__(self, std=0.1, decay_rate=0):
+    def __init__(self, std=0.1, decay_rate=0.75):
         super().__init__()
         self.std = std
         self.decay_rate = decay_rate
 
     def decay_step(self):
-        self.std = max(self.std - self.decay_rate, 0)
+        self.std = max(self.std * self.decay_rate, 0)
 
     def forward(self, x):
         if self.training:
