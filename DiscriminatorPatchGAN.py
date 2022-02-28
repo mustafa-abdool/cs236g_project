@@ -157,7 +157,7 @@ class DiscriminatorPatchGANConditional(nn.Module):
         if self.use_class_proj:
             # we need to flatten all the patchgan patches into a dot product
             self.flat_layer = nn.Flatten()
-            self.all_patches_size  = 36
+            self.all_patches_size  = 16
             self.final_class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = self.all_patches_size)
             self.final_linear = nn.Linear(self.all_patches_size, 1)
             self.sigmoid_func = nn.Sigmoid()
@@ -196,6 +196,7 @@ class DiscriminatorPatchGANConditional(nn.Module):
         if self.use_class_proj:
             # should be shape (bs, self.all_patches_size)
             disc_pred = self.flat_layer(xn)
+
             # disc_pred output is (bs, hidden_dim)
             final_class_embed = self.final_class_embedding(class_labels.long()).view(bs, self.all_patches_size)
             dot_prod_class_info = torch.sum(disc_pred * final_class_embed, dim =1).view(bs, 1)
