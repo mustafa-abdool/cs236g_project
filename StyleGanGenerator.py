@@ -84,7 +84,6 @@ class InjectNoise(nn.Module):
     def get_self(self):
         return self
     
-# todo: use class conditional batch norm here
 class AdaIN(nn.Module):
     '''
     AdaIN Class
@@ -93,7 +92,7 @@ class AdaIN(nn.Module):
         w_dim: the dimension of the intermediate noise vector, a scalar
     '''
 
-    def __init__(self, channels, w_dim, use_class_style = False, class_embed_size = 32):
+    def __init__(self, channels, w_dim, use_class_style = False, class_style_weight = 1.0, class_embed_size = 32):
         super().__init__()
 
         # Normalize the input per-dimension
@@ -106,14 +105,18 @@ class AdaIN(nn.Module):
         # both linear maps transform a w vector into style weights 
         # corresponding to the number of image channels.
 
+        self.style_scale_transform = nn.Linear(w_dim, channels)
+        self.style_shift_transform = nn.Linear(w_dim, channels)
+
+
         if self.use_class_style:
+            self.class_style_weight = class_style_weight
             # todo: make this more general based on number of types
             self.class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = class_embed_size)
-            self.style_scale_transform = nn.Linear(w_dim + class_embed_size, channels)
-            self.style_shift_transform = nn.Linear(w_dim + class_embed_size, channels)
+            self.class_conditional_style_scale_transform = nn.Linear(class_embed_size, channels)
+            self.class_conditional_style_shift_transform = nn.Linear(class_embed_size, channels)
         else:
-            self.style_scale_transform = nn.Linear(w_dim, channels)
-            self.style_shift_transform = nn.Linear(w_dim, channels)
+
 
     def forward(self, image, w, class_labels = None):
         '''
@@ -126,17 +129,17 @@ class AdaIN(nn.Module):
         '''
 
         normalized_image = self.instance_norm(image)
+        style_scale = self.style_scale_transform(w)[:, :, None, None]
+        style_shift = self.style_shift_transform(w)[:, :, None, None]
 
         if self.use_class_style:
+            # get (style, shift) parameters for each class and add them based on weight
             embeddings = self.class_embedding(class_labels).view(-1, self.class_embed_size)
-            # shape (bs, w_dim + class_embed_size)
-            w_and_embed_concat = torch.cat((w, embeddings), dim = 1)
-            style_scale = self.style_scale_transform(w_and_embed_concat)[:, :, None, None]
-            style_shift = self.style_shift_transform(w_and_embed_concat)[:, :, None, None]
-        else:
-            style_scale = self.style_scale_transform(w)[:, :, None, None]
-            style_shift = self.style_shift_transform(w)[:, :, None, None]
-        
+            style_scale_per_class = self.style_scale_transform(embeddings)[:, :, None, None]
+            style_shift_per_class = self.style_shift_transform(embeddings)[:, :, None, None]
+            style_scale = style_scale + self.class_style_weight * style_scale_per_class
+            style_shift = style_shift + self.class_style_weight + style_shift_per_class
+
         # Calculate the transformed image
         transformed_image = style_scale * normalized_image + style_shift
         return transformed_image
@@ -349,13 +352,13 @@ class MicroStyleGANGeneratorConditional(nn.Module):
         
         # Typically this constant is initiated to all ones
         self.starting_constant = nn.Parameter(torch.ones(1, in_chan, 4, 4))
-        self.block0 = MicroStyleGANGeneratorBlock(in_chan, hidden_chan, w_dim, kernel_size, 4, use_upsample=False, use_class_style = use_class_style, class_embed_size = class_style_embed_size)
-        self.block1 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 8, use_class_style = use_class_style, class_embed_size = class_style_embed_size)
-        self.block2 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 16, use_class_style = use_class_style, class_embed_size = class_style_embed_size)
-        self.block3 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 32 ,use_class_style = use_class_style, class_embed_size = class_style_embed_size)
-        self.block4 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 64, use_class_style = use_class_style, class_embed_size = class_style_embed_size)
+        self.block0 = MicroStyleGANGeneratorBlock(in_chan, hidden_chan, w_dim, kernel_size, 4, use_upsample=False, use_class_style = use_class_style, class_embed_size = class_style_embed_size, class_style_weight = 0.1)
+        self.block1 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 8, use_class_style = use_class_style, class_embed_size = class_style_embed_size, class_style_weight = 0.25)
+        self.block2 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 16, use_class_style = use_class_style, class_embed_size = class_style_embed_size, class_style_weight = 0.25)
+        self.block3 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 32 ,use_class_style = use_class_style, class_embed_size = class_style_embed_size, class_style_weight = 0.5)
+        self.block4 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 64, use_class_style = use_class_style, class_embed_size = class_style_embed_size, class_style_weight = 1.0)
         if output_dim == 128:
-          self.block5 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 128, use_class_style = use_class_style, class_embed_size = class_style_embed_size)
+          self.block5 = MicroStyleGANGeneratorBlock(hidden_chan, hidden_chan, w_dim, kernel_size, 128, use_class_style = use_class_style, class_embed_size = class_style_embed_size, class_style_weight = 1.0)
         # You need to have a way of mapping from the output noise to an image, 
         # so you learn a 1x1 convolution to transform the e.g. 512 channels into 3 channels
         # (Note that this is simplified, with clipping used in the real StyleGAN)

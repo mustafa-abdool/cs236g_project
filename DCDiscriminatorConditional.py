@@ -21,10 +21,11 @@ class DCDiscriminatorConditional(nn.Module):
     def __init__(self, im_chan=3, hidden_dim=64, early_dropout=0.2, 
                         mid_dropout = 0.25, late_dropout = 0.3,
                         class_embed_size = 16, use_dropout = False, 
-                        use_gaussian_noise = False, gaussian_noise_std = 0.1):
+                        use_gaussian_noise = False, gaussian_noise_std = 0.1, use_class_proj = False):
         super(DCDiscriminatorConditional, self).__init__()
         self.input_image_dim = 64 # can't be changed easily
         self.class_embed_size = class_embed_size
+        self.use_class_proj = use_class_proj
 
         if use_dropout:
             print("==== Using dropout in discriminator!!")
@@ -41,6 +42,12 @@ class DCDiscriminatorConditional(nn.Module):
 
         # create the class embeddig
         self.class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = class_embed_size)
+
+
+        if self.use_class_proj:
+            self.final_class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = self.hidden_dim)
+            self.final_linear = nn.Linear(self.hidden_dim, 1)
+            self.sigmoid_func = nn.Sigmoid()
 
         self.input_channels = im_chan + 1 # add an extra channel for the label
         self.disc = nn.Sequential(
@@ -81,15 +88,22 @@ class DCDiscriminatorConditional(nn.Module):
                 nn.LeakyReLU(0.2, inplace=True),
             )
         else:
-            return nn.Sequential(
-                gaussian_noise_layer,
-                nn.Conv2d(input_channels, output_channels, kernel_size, stride, padding),
-                nn.Flatten(),
-                # some people said dropout layers tend to work better
-                nn.Dropout(p = self.late_dropout),
-                nn.Linear(self.hidden_dim, 1),
-                nn.Sigmoid()
-            )
+            if self.use_class_proj:
+                return nn.Sequential(
+                    gaussian_noise_layer,
+                    nn.Conv2d(input_channels, output_channels, kernel_size, stride, padding),
+                    nn.Flatten()
+                )
+            else:
+                return nn.Sequential(
+                    gaussian_noise_layer,
+                    nn.Conv2d(input_channels, output_channels, kernel_size, stride, padding),
+                    nn.Flatten(),
+                    # some people said dropout layers tend to work better
+                    nn.Dropout(p = self.late_dropout),
+                    nn.Linear(self.hidden_dim, 1),
+                    nn.Sigmoid()
+                )
 
     def forward(self, image, class_labels):
         '''
@@ -112,4 +126,14 @@ class DCDiscriminatorConditional(nn.Module):
         image_and_class_embed = torch.cat((image, class_embed_tiled), dim = 1)
 
         disc_pred = self.disc(image_and_class_embed)
-        return disc_pred.view(bs, 1)
+
+        if self.use_class_proj:
+            # disc_pred output is (bs, hidden_dim)
+            final_class_embed = self.final_class_embedding(class_labels.long()).view(bs, self.hidden_dim)
+            dot_prod_class_info = torch.sum(disc_pred * final_class_embed, dim =1).view(bs, 1)
+            final_linear_portion = self.final_linear(disc_pred).view(bs, 1)
+            # sum the two scalar predictions to get the final output
+            return sigmoid_func(final_linear_portion + dot_prod_class_info)
+
+        else:
+            return disc_pred.view(bs, 1)
