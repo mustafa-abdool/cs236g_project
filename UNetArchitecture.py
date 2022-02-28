@@ -354,7 +354,6 @@ class UNetConditional(nn.Module):
         super(UNetConditional, self).__init__()
 
         assert input_dim in set([64, 96])
-        assert z_dim in set([16, 32])
 
         # we tile the noise vector to make the input image, so it has to be divisible by it
         self.z_dim = z_dim

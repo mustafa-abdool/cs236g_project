@@ -18,6 +18,7 @@ class GaussianNoise(nn.Module):
 
     def decay_step(self):
         self.std = max(self.std * self.decay_rate, 0)
+        print("New gaussian noise std value is: {}".format(self.std))
 
     def set_noise(self, new_val):
         self.std = new_val
