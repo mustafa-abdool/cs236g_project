@@ -19,6 +19,9 @@ class GaussianNoise(nn.Module):
     def decay_step(self):
         self.std = max(self.std * self.decay_rate, 0)
 
+    def set_noise(self, new_val):
+        self.std = new_val
+
     def forward(self, x):
         if self.training:
             return x + torch.empty_like(x).normal_(std=self.std)
@@ -32,3 +35,11 @@ def decay_gauss_std(dnn):
         if isinstance(m, GaussianNoise):
             m.decay_step()
             std = m.std            
+
+# method to set std of gaussian noise layer
+def set_gauss_std(dnn, new_val):
+    std = 0
+    for m in dnn.modules():
+        if isinstance(m, GaussianNoise):
+            m.set_noise(new_val)
+            std = m.std                   

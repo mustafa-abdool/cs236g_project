@@ -133,7 +133,7 @@ class DCDiscriminatorConditional(nn.Module):
             dot_prod_class_info = torch.sum(disc_pred * final_class_embed, dim =1).view(bs, 1)
             final_linear_portion = self.final_linear(disc_pred).view(bs, 1)
             # sum the two scalar predictions to get the final output
-            return sigmoid_func(final_linear_portion + dot_prod_class_info)
+            return self.sigmoid_func(final_linear_portion + dot_prod_class_info)
 
         else:
             return disc_pred.view(bs, 1)
