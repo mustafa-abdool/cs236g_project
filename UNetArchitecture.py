@@ -4,6 +4,7 @@ torch.manual_seed(0) # Set for testing purposes, please do not change!
 import torch.nn.functional as F
 from pkmn_constants import *
 from MappingNetwork import MappingNetwork
+from GaussianNoise import GaussianNoise
 
 
 # Perform adaptive normalization with 
@@ -350,7 +351,7 @@ class UNetConditional(nn.Module):
                  use_conditional_layer_arch = False, use_mapping_network = False, 
                  map_network_hidden_size = 16, dropout_prob = 0.5, use_dropout = True,
                  vocab_size  = NUM_PKMN_TYPES, inject_noise = False, use_class_adapt_layer = False,
-                 class_adapt_layer_embed_size = 32):
+                 class_adapt_layer_embed_size = 32, use_middle_noise = False, middle_noise_std = 0.05):
         super(UNetConditional, self).__init__()
 
         assert input_dim in set([64, 96])
@@ -364,6 +365,7 @@ class UNetConditional(nn.Module):
         self.vocab_size = vocab_size
         self.inject_noise = inject_noise
         self.use_class_adapt_layer = use_class_adapt_layer
+        self.use_middle_noise = use_middle_noise
 
         if use_class_embed:
             self.class_embed_size = class_embed_size
@@ -406,6 +408,9 @@ class UNetConditional(nn.Module):
             self.class_layer_16 = AdaINClassAdapativeLayer(hidden_channels * 16, class_embed_size = class_adapt_layer_embed_size) # after expand1
             self.class_layer_32 = AdaINClassAdapativeLayer(hidden_channels * 32, class_embed_size = class_adapt_layer_embed_size) # after expand0
             self.class_layer_64 = AdaINClassAdapativeLayer(hidden_channels * 64, class_embed_size = class_adapt_layer_embed_size) # after contract6
+
+        if self.use_middle_noise:
+            self.middle_noise = GaussianNoise(std = middle_noise_std)
 
     def forward(self, noise_vec, class_labels):
         '''
@@ -467,6 +472,8 @@ class UNetConditional(nn.Module):
             x6_concat = torch.cat((x6, label_tensor_reshaped), dim = 1).view(bs, self.intermediate_embed_dim + self.class_embed_size)
             x6_map_out = self.intermediate_mapping_network(x6_concat).view(bs, self.intermediate_embed_dim, 1, 1)
             x6 = x6_map_out
+        if self.use_middle_noise:
+            x6 = self.middle_noise(x6)
         x7 = self.expand0(x6, x5)
         if self.use_class_adapt_layer:
             x7 = self.class_layer_32(x7, class_labels)        
