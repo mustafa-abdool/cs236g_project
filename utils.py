@@ -36,15 +36,14 @@ def get_image_noise(n_samples, image_dim, device='cpu', upsampling = False, nois
 
 
 # method to get random labels for some real images to use as fake examples in the discriminator
+# method to get random labels for some real images to use as fake examples in the discriminator
 def get_incorrect_labels_for_real(true_labels, neg_sample_bs, num_pkmn_types, device = "cpu", debug = False):
  
-  true_labels_neg_sample = true_labels[0:neg_sample_bs]
+  true_labels_neg_sample = true_labels[0:neg_sample_bs].to(device)
   random_labels = torch.randint(low = 0, high = num_pkmn_types, size = (neg_sample_bs,)).to(device)
   # if you happened to use the correct label, just increment it!
-  fixed_labels = torch.where(random_labels == true_labels_neg_sample, random_labels + 1, random_labels)
+  fixed_labels = torch.where(random_labels == true_labels_neg_sample, random_labels + 1, random_labels).to(device)
 
-  return fixed_labels
-  
   if debug:
     print("Current batch size is: {}".format(cur_bs))
     print("Random labels: {}".format(random_labels))
@@ -52,7 +51,10 @@ def get_incorrect_labels_for_real(true_labels, neg_sample_bs, num_pkmn_types, de
     print("Equality map: {}".format(random_labels == true_labels_neg_sample))
     print(fixed_labels == true_labels_neg_sample)
     print("Final random labels: {}".format(fixed_labels))
+
+  return fixed_labels
   
+
 
 # method that uses the truncation trick to get a noise vector
 def get_truncated_noise(num_samples, z_dim, device = 'cpu', mean = 0, std = 1, thres = 1):
