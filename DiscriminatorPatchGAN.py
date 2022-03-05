@@ -129,7 +129,7 @@ class DiscriminatorPatchGANConditional(nn.Module):
     def __init__(self, input_channels=3, hidden_channels=8, 
                 class_embed_size = 16, input_image_dim = 96, use_dropout = False, 
                 dropout_prob = 0.5, use_gaussian_noise = False, gaussian_noise_std = 0.1,
-                use_class_proj = False):
+                use_class_proj = False, use_multi_loss = False, num_pkmn_types = None):
         super(DiscriminatorPatchGANConditional, self).__init__()
 
 
@@ -139,6 +139,14 @@ class DiscriminatorPatchGANConditional(nn.Module):
         self.class_embed_size = class_embed_size
         self.use_gaussian_noise = use_gaussian_noise
         self.use_class_proj = use_class_proj
+        self.use_multi_loss = use_multi_loss
+        self.num_pkmn_types = num_pkmn_types
+
+        # these cannot be used together
+        assert not (use_class_proj and use_multi_loss)
+
+        if self.use_multi_loss:
+            assert self.num_pkmn_types is not None
 
         if self.use_gaussian_noise:
             self.gauss1 = GaussianNoise(std = gaussian_noise_std)
@@ -161,6 +169,11 @@ class DiscriminatorPatchGANConditional(nn.Module):
             self.final_class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = self.all_patches_size)
             self.final_linear = nn.Linear(self.all_patches_size, 1)
             self.sigmoid_func = nn.Sigmoid()
+
+        elif self.use_multi_loss:
+            # we need to flatten all the patchgan patches and have a final layer
+            self.flat_layer = nn.Flatten()
+            self.final_linear = nn.Linear(self.all_patches_size, self.num_pkmn_types + 2)
 
 
     # PatchGAN input is (x,y) where x and y are both are images (cause it's used for image2image translation)
@@ -203,6 +216,14 @@ class DiscriminatorPatchGANConditional(nn.Module):
             final_linear_portion = self.final_linear(disc_pred).view(bs, 1)
             # sum the two scalar predictions to get the final output (no sigmoid yet, use it in the loss func!)
             return final_linear_portion + dot_prod_class_info
+
+        elif self.use_multi_loss:
+            # should be shape (bs, self.all_patches_size)
+            disc_pred = self.flat_layer(xn)
+
+            final_multiclass_output_and_source = self.final_linear(disc_pred).view(bs, self.num_pkmn_types + 2)
+
+            return final_multiclass_output_and_source   
 
         else:
             return xn        

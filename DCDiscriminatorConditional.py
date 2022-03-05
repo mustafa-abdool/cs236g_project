@@ -21,11 +21,24 @@ class DCDiscriminatorConditional(nn.Module):
     def __init__(self, im_chan=3, hidden_dim=64, early_dropout=0.2, 
                         mid_dropout = 0.25, late_dropout = 0.3,
                         class_embed_size = 16, use_dropout = False, 
-                        use_gaussian_noise = False, gaussian_noise_std = 0.1, use_class_proj = False):
+                        use_gaussian_noise = False, gaussian_noise_std = 0.1, 
+                        use_class_proj = False, use_multi_loss = False,
+                        num_pkmn_types = None):
         super(DCDiscriminatorConditional, self).__init__()
         self.input_image_dim = 64 # can't be changed easily
         self.class_embed_size = class_embed_size
         self.use_class_proj = use_class_proj
+        self.use_multi_loss = use_multi_loss
+        self.num_pkmn_types = num_pkmn_types
+
+        # these cannot be used together
+        assert not (use_class_proj and use_multi_loss)
+
+        # if you are using the multi loss, you need to specify the number of pokemont ypes
+        if use_multi_loss:
+            assert num_pkmn_types is not None
+            
+
 
         if use_dropout:
             print("==== Using dropout in discriminator!!")
@@ -94,6 +107,16 @@ class DCDiscriminatorConditional(nn.Module):
                     nn.Conv2d(input_channels, output_channels, kernel_size, stride, padding),
                     nn.Flatten()
                 )
+            elif self.use_multi_loss:
+                return nn.Sequential(
+                    gaussian_noise_layer,
+                    nn.Conv2d(input_channels, output_channels, kernel_size, stride, padding),
+                    nn.Flatten(),
+                    # some people said dropout layers tend to work better
+                    nn.Dropout(p = self.late_dropout),
+                    # use [self.num_pkmn_types] to represent type distribution and [1] for real/fake prediction
+                    nn.Linear(self.hidden_dim, self.num_pkmn_types + 2),
+                )                
             else:
                 return nn.Sequential(
                     gaussian_noise_layer,
@@ -134,6 +157,9 @@ class DCDiscriminatorConditional(nn.Module):
             final_linear_portion = self.final_linear(disc_pred).view(bs, 1)
             # sum the two scalar predictions to get the final output
             return self.sigmoid_func(final_linear_portion + dot_prod_class_info)
+
+        elif self.use_multi_loss:
+            return disc_pred.view(bs, self.num_pkmn_types + 2)
 
         else:
             return disc_pred.view(bs, 1)

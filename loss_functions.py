@@ -130,7 +130,92 @@ def disc_loss_patchGAN(disc_fake_pred, disc_real_pred, device):
     
     disc_loss = (disc_loss_fake + disc_loss_real) / 2.0
     
-    return disc_loss  
+    return disc_loss
+
+
+
+# loss that combines two terms - a multiclass distirbution loss over what pokemon type it is
+# And the typical P(real)/P(fake) loss term 
+# the discrminator output is of shape (1 + num_pkmn_types)
+# the first term corresponds to P(real)/P(fake) while the num_pkmn_type terms corresponds to the distribution
+def disc_loss_ACGAN(disc_fake_pred, disc_real_pred, true_labels, num_pkmn_types, device, 
+                         multi_class_lambda = 0.1, debug = False):
+    '''
+    Return the loss of a discriminator given the discriminator's scores for fake and real images
+    Assumes that discriminator outputs a logit that represents P(real) over some mxm patches 
+    '''
+
+    loss_func_source_type = nn.BCEWithLogitsLoss()
+    loss_func_multiclass_pkmn_type = nn.CrossEntropyLoss()
+
+    bs = len(disc_fake_pred)
+
+    # split output into source and pkmn type logits
+    # 3 loss terms
+
+    disc_source_pred_fake = disc_fake_pred[:, 0].view(bs, 1)
+    disc_pkmn_type_logits_fake = disc_fake_pred[:, 1:].view(bs, num_pkmn_types + 1) # shape (bs, # of pkmn types + 1)
+
+    disc_source_pred_real = disc_real_pred[:, 0].view(bs, 1)
+    disc_pkmn_type_logits_real = disc_real_pred[:, 1:].view(bs, num_pkmn_types + 1) # shape (bs, # of pkmn types + 1)
+
+
+    # first, get how the disc. performs on the "fake" images (want this to be equal to about 0)
+    target_labels_fake_images = torch.rand(disc_source_pred_fake.shape, device = device)*0.05
+    disc_loss_fake = loss_func_source_type(disc_source_pred_fake, target_labels_fake_images)
+    
+    # want prediction on the real images to be equal to about 1
+    target_labels_real_images = torch.rand(disc_source_pred_real.shape, device = device)*0.05 + 0.95
+    disc_loss_real = loss_func_source_type(disc_source_pred_real, target_labels_real_images)
+
+    # *NEW TERM* we also want the class predictions on the real images to be correct
+    disc_loss_multiclass_real = loss_func_multiclass_pkmn_type(disc_pkmn_type_logits_real, true_labels) 
+
+    # *NEW TERM* we also want the class predictions on the fake images to be equal to a single (dummy) class
+    # which we reserve as the last class output and only appears in this loss function
+    target_labels_fake_classes = torch.ones_like(true_labels, device = device) * num_pkmn_types
+    disc_loss_multiclass_fake = loss_func_multiclass_pkmn_type(disc_pkmn_type_logits_fake, target_labels_fake_classes.long()) 
+    
+    if debug:
+        print("disc source losses ==> real images: {}, fakes images: {}".format(disc_loss_fake, disc_loss_real))
+        print("disc class distribution losses ==> real images: {}, fakes images: {}".format(disc_loss_multiclass_real, disc_loss_multiclass_fake))
+
+    disc_loss = (disc_loss_fake + disc_loss_real + multi_class_lambda * disc_loss_multiclass_real + multi_class_lambda * disc_loss_multiclass_fake) / 4.0
+    return disc_loss
+
+
+def gen_loss_ACGAN(disc_fake_pred, true_labels, num_pkmn_types, device, 
+                         multi_class_lambda = 0.1, debug = False):
+    '''
+    Return the loss of a discriminator given the discriminator's scores for fake and real images
+    Assumes that discriminator outputs a logit that represents P(real) over some mxm patches 
+    '''
+
+    loss_func_source_type = nn.BCEWithLogitsLoss()
+    loss_func_multiclass_pkmn_type = nn.CrossEntropyLoss()
+
+    bs = len(disc_fake_pred)
+
+    # split disc output into source and pkmn type logits for the fake images
+    disc_source_pred_fake = disc_fake_pred[:, 0].view(bs, 1)
+    disc_pkmn_type_logits_fake = disc_fake_pred[:, 1:].view(bs, num_pkmn_types + 1) # shape (bs, # of pkmn types + 1)
+
+    # first, get how the disc. performs on the "fake" images (want this to be equal to 1 so we can fool it)
+    target_labels_fake_images = torch.ones_like(disc_source_pred_fake, device = device)
+    gen_loss_source = loss_func_source_type(disc_source_pred_fake, target_labels_fake_images)
+
+    # *NEW TERM* we also want the class predictions on the fakes images to be correct
+    target_labels_fake_classes = true_labels
+    gen_loss_multiclass = loss_func_multiclass_pkmn_type(disc_pkmn_type_logits_fake, true_labels) 
+
+
+    gen_loss = (gen_loss_source + disc_loss_real + multi_class_lambda * gen_loss_multiclass) / 2.0
+    
+    if debug:
+        print("gen source losses ==>  fake images: {}".format(gen_loss_source))
+        print("gen class distribution losses ==> fakes images: {}".format(gen_loss_multiclass))
+
+    return gen_loss           
 
 def noisy_disc_loss_patchGAN(disc_fake_pred, disc_real_pred, device):
     '''
@@ -316,6 +401,8 @@ def get_generator_loss_func(name):
         return get_gen_loss_wgan
     if name == "basic_gen_loss_with_logits":
         return gen_loss_basic_with_logits
+    if name == "gen_loss_ACGAN":
+        return gen_loss_ACGAN
     print("No gen loss function found for name: {}".format(name))
 
 
@@ -336,5 +423,7 @@ def get_disc_loss_func(name):
         return disc_loss_patchGAN
     if name == "noisy_patchgan_disc_loss":
         return noisy_disc_loss_patchGAN
+    if name == "disc_loss_ACGAN":
+        return disc_loss_ACGAN
     else:
         print("No disc loss function found for name: {}".format(name))
