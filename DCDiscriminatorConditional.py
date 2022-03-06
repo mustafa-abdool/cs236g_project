@@ -23,7 +23,7 @@ class DCDiscriminatorConditional(nn.Module):
                         class_embed_size = 16, use_dropout = False, 
                         use_gaussian_noise = False, gaussian_noise_std = 0.1, 
                         use_class_proj = False, use_multi_loss = False,
-                        num_pkmn_types = None):
+                        num_pkmn_types = None, use_custom_output_units = False, custom_output_units = 16):
         super(DCDiscriminatorConditional, self).__init__()
         self.input_image_dim = 64 # can't be changed easily
         self.class_embed_size = class_embed_size
@@ -31,14 +31,15 @@ class DCDiscriminatorConditional(nn.Module):
         self.use_multi_loss = use_multi_loss
         self.num_pkmn_types = num_pkmn_types
 
+        self.use_custom_output_units = use_custom_output_units
+        self.custom_output_units = custom_output_units
+
         # these cannot be used together
         assert not (use_class_proj and use_multi_loss)
 
         # if you are using the multi loss, you need to specify the number of pokemont ypes
         if use_multi_loss:
             assert num_pkmn_types is not None
-            
-
 
         if use_dropout:
             print("==== Using dropout in discriminator!!")
@@ -60,7 +61,7 @@ class DCDiscriminatorConditional(nn.Module):
         if self.use_class_proj:
             self.final_class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = self.hidden_dim)
             self.final_linear = nn.Linear(self.hidden_dim, 1)
-            self.sigmoid_func = nn.Sigmoid()
+            self.sigmoid_func = nn.Sigmoid()      
 
         self.input_channels = im_chan + 1 # add an extra channel for the label
         self.disc = nn.Sequential(
@@ -116,7 +117,22 @@ class DCDiscriminatorConditional(nn.Module):
                     nn.Dropout(p = self.late_dropout),
                     # use [self.num_pkmn_types] to represent type distribution and [1] for real/fake prediction
                     nn.Linear(self.hidden_dim, self.num_pkmn_types + 2),
-                )                
+                )
+
+            # used for the Encoder architecture, not sure actually about if this should be a logit
+            # or if we sigmoid it.
+            # actually, it doesn't seem like we sigmoid it from the reference code!
+            elif self.use_custom_output_units:
+                return nn.Sequential(
+                    gaussian_noise_layer,
+                    nn.Conv2d(input_channels, output_channels, kernel_size, stride, padding),
+                    nn.Flatten(),
+                    # some people said dropout layers tend to work better
+                    nn.Dropout(p = self.late_dropout),
+                    # use [self.num_pkmn_types] to represent type distribution and [1] for real/fake prediction
+                    nn.Linear(self.hidden_dim, self.custom_output_units),
+                )
+
             else:
                 return nn.Sequential(
                     gaussian_noise_layer,
@@ -160,6 +176,9 @@ class DCDiscriminatorConditional(nn.Module):
 
         elif self.use_multi_loss:
             return disc_pred.view(bs, self.num_pkmn_types + 2)
+
+        elif self.use_custom_output_units:
+            return disc_pred.view(bs, self.custom_output_units)
 
         else:
             return disc_pred.view(bs, 1)

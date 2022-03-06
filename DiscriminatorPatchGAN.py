@@ -129,7 +129,8 @@ class DiscriminatorPatchGANConditional(nn.Module):
     def __init__(self, input_channels=3, hidden_channels=8, 
                 class_embed_size = 16, input_image_dim = 96, use_dropout = False, 
                 dropout_prob = 0.5, use_gaussian_noise = False, gaussian_noise_std = 0.1,
-                use_class_proj = False, use_multi_loss = False, num_pkmn_types = None):
+                use_class_proj = False, use_multi_loss = False, num_pkmn_types = None,
+                use_custom_output_units = True, custom_output_units = 16):
         super(DiscriminatorPatchGANConditional, self).__init__()
 
 
@@ -141,6 +142,10 @@ class DiscriminatorPatchGANConditional(nn.Module):
         self.use_class_proj = use_class_proj
         self.use_multi_loss = use_multi_loss
         self.num_pkmn_types = num_pkmn_types
+        self.custom_output_units = custom_output_units
+        self.use_custom_output_units = use_custom_output_units
+        # specific to 64x64 input
+        self.all_patches_size  = 16
 
         # these cannot be used together
         assert not (use_class_proj and use_multi_loss)
@@ -165,7 +170,6 @@ class DiscriminatorPatchGANConditional(nn.Module):
         if self.use_class_proj:
             # we need to flatten all the patchgan patches into a dot product
             self.flat_layer = nn.Flatten()
-            self.all_patches_size  = 16
             self.final_class_embedding = nn.Embedding(num_embeddings = NUM_PKMN_TYPES, embedding_dim = self.all_patches_size)
             self.final_linear = nn.Linear(self.all_patches_size, 1)
             self.sigmoid_func = nn.Sigmoid()
@@ -174,6 +178,11 @@ class DiscriminatorPatchGANConditional(nn.Module):
             # we need to flatten all the patchgan patches and have a final layer
             self.flat_layer = nn.Flatten()
             self.final_linear = nn.Linear(self.all_patches_size, self.num_pkmn_types + 2)
+
+        elif self.use_custom_output_units:
+            # we need to flatten all the patchgan patches and have a final layer
+            self.flat_layer = nn.Flatten()
+            self.final_linear = nn.Linear(self.all_patches_size, self.custom_output_units)
 
 
     # PatchGAN input is (x,y) where x and y are both are images (cause it's used for image2image translation)
@@ -223,7 +232,15 @@ class DiscriminatorPatchGANConditional(nn.Module):
 
             final_multiclass_output_and_source = self.final_linear(disc_pred).view(bs, self.num_pkmn_types + 2)
 
-            return final_multiclass_output_and_source   
+            return final_multiclass_output_and_source
+
+        elif self.use_custom_output_units:
+            # should be shape (bs, self.all_patches_size)
+            disc_pred = self.flat_layer(xn)
+
+            final_pred = self.final_linear(disc_pred).view(bs, self.custom_output_units)
+
+            return final_pred               
 
         else:
             return xn        
