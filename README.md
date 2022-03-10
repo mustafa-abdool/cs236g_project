@@ -58,4 +58,6 @@ The final cell in all of the notebooks provide a way to sample Pokemon from the 
 - `UNetArchitecture.py` contains Unet specific class architectures
 - `StyleGanGenerator.py` contains StyleGAN specific class architectures
 
+## References
 
+1. Lab Notebooks from the [GAN Coursera course] (https://www.coursera.org/learn/build-basic-generative-adversarial-networks-gans/)
