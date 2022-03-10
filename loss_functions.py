@@ -139,7 +139,7 @@ def disc_loss_patchGAN(disc_fake_pred, disc_real_pred, device):
 # the discrminator output is of shape (1 + num_pkmn_types)
 # the first term corresponds to P(real)/P(fake) while the num_pkmn_type terms corresponds to the distribution
 def disc_loss_ACGAN(disc_fake_pred, disc_real_pred, true_labels, num_pkmn_types, 
-                          multi_class_lambda, device, 
+                          multi_class_lambda_real, multi_class_lambda_fake, device, 
                           debug = False):
     '''
     Return the loss of a discriminator given the discriminator's scores for fake and real images
@@ -182,15 +182,14 @@ def disc_loss_ACGAN(disc_fake_pred, disc_real_pred, true_labels, num_pkmn_types,
         print("disc source losses ==> real images: {}, fakes images: {}".format(disc_loss_fake, disc_loss_real))
         print("disc class distribution losses ==> real images: {}, fakes images: {}".format(disc_loss_multiclass_real, disc_loss_multiclass_fake))
 
-    disc_loss = (disc_loss_fake + disc_loss_real + multi_class_lambda * disc_loss_multiclass_real + multi_class_lambda * disc_loss_multiclass_fake) / 4.0
+    disc_loss = (disc_loss_fake + disc_loss_real + multi_class_lambda_real * disc_loss_multiclass_real + multi_class_lambda_fake * disc_loss_multiclass_fake) / 4.0
     return disc_loss
 
 
 def gen_loss_ACGAN(disc_fake_pred, true_labels, num_pkmn_types, multi_class_lambda, device, 
                           debug = False):
     '''
-    Return the loss of a discriminator given the discriminator's scores for fake and real images
-    Assumes that discriminator outputs a logit that represents P(real) over some mxm patches 
+    Return the loss of a generator using the AC-gan strategy, i.e. combining classification and source losses
     '''
 
     loss_func_source_type = nn.BCEWithLogitsLoss()

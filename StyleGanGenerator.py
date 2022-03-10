@@ -4,6 +4,10 @@ torch.manual_seed(0) # Set for testing purposes, please do not change!
 import torch.nn.functional as F
 from pkmn_constants import *
 
+"""
+Classes used for class conditioned StyleGAN generator code.
+"""
+
 
 class MappingLayers(nn.Module):
     '''
@@ -17,16 +21,11 @@ class MappingLayers(nn.Module):
     def __init__(self, z_dim, hidden_dim, w_dim):
         super().__init__()
         self.mapping = nn.Sequential(
-            # Please write a neural network which takes in tensors of 
-            # shape (n_samples, z_dim) and outputs (n_samples, w_dim)
-            # with a hidden layer with hidden_dim neurons
-            #### START CODE HERE ####
             nn.Linear(z_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, w_dim)
-            #### END CODE HERE ####
         )
 
     def forward(self, noise):
@@ -51,12 +50,8 @@ class InjectNoise(nn.Module):
         super().__init__()
         self.weight = nn.Parameter( # You use nn.Parameter so that these weights can be optimized
             # Initiate the weights for the channels from a random normal distribution
-            #### START CODE HERE ####
-            
             # you have one weight per channel and it starts off by being initialized using N(0,1)
             torch.randn((1, channels, 1, 1))
-            
-            #### END CODE HERE ####
         )
 
     def forward(self, image):
@@ -68,12 +63,10 @@ class InjectNoise(nn.Module):
         '''
         # Set the appropriate shape for the noise!
         
-        #### START CODE HERE ####
         n_samples, channels, width, height = image.shape
         # basically you want to apply the noise to all channels at once
-        # you only ahve one channel of truly random noise that is applied across all channels
+        # you only have one channel of truly random noise that is applied across all channels
         noise_shape = (n_samples, 1, width, height)
-        #### END CODE HERE ####
         
         noise = torch.randn(noise_shape, device=image.device) # Creates the random noise
         return image + self.weight * noise # Applies to image after multiplying by the weight for each channel
@@ -90,6 +83,9 @@ class AdaIN(nn.Module):
     Values:
         channels: the number of channels the image has, a scalar
         w_dim: the dimension of the intermediate noise vector, a scalar
+        use_class_style : whether or not class embeddings will be used to produce scale/shift parameters
+        class_style_weight: weight between class normalization parameters vs. general ones
+        class_embed_size: embedding size if doing class conditional normalization
     '''
 
     def __init__(self, channels, w_dim, use_class_style = False, class_style_weight = 1.0, class_embed_size = 32):
@@ -99,11 +95,6 @@ class AdaIN(nn.Module):
         self.instance_norm = nn.InstanceNorm2d(channels)
         self.use_class_style = use_class_style
         self.class_embed_size = class_embed_size
-
-        # You want to map w to a set of style weights per channel.
-        # Replace the Nones with the correct dimensions - keep in mind that 
-        # both linear maps transform a w vector into style weights 
-        # corresponding to the number of image channels.
 
         self.style_scale_transform = nn.Linear(w_dim, channels)
         self.style_shift_transform = nn.Linear(w_dim, channels)
@@ -169,15 +160,7 @@ class MicroStyleGANGeneratorBlock(nn.Module):
                  use_class_style = False, class_embed_size = 64):
         super().__init__()
         self.use_upsample = use_upsample
-        # Replace the Nones in order to:
-        # 1. Upsample to the starting_size, bilinearly (https://pytorch.org/docs/master/generated/torch.nn.Upsample.html)
-        # 2. Create a kernel_size convolution which takes in 
-        #    an image with in_chan and outputs one with out_chan (https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html)
-        # 3. Create an object to inject noise
-        # 4. Create an AdaIN object
-        # 5. Create a LeakyReLU activation with slope 0.2
         
-        #### START CODE HERE ####
         if self.use_upsample:
             self.upsample = nn.Upsample(starting_size, mode='bilinear')
         self.use_class_style = use_class_style
@@ -185,7 +168,6 @@ class MicroStyleGANGeneratorBlock(nn.Module):
         self.inject_noise = InjectNoise(out_chan)
         self.adain = AdaIN(out_chan, w_dim, use_class_style = use_class_style, class_embed_size = class_embed_size)
         self.activation = nn.LeakyReLU(negative_slope = 0.2)
-        #### END CODE HERE ####
 
     def forward(self, x, w, class_labels = None):
         '''
@@ -207,7 +189,6 @@ class MicroStyleGANGeneratorBlock(nn.Module):
             x = self.adain(x, w)
         return x
     
-    #UNIT TEST COMMENT: Required for grading
     def get_self(self):
         return self;
 
@@ -293,13 +274,6 @@ class MicroStyleGANGenerator(nn.Module):
         x_block4 = self.block4(x_block3, w) # fourth generator block output
         x_block4_image = self.block4_to_image(x_block4)
                 
-        #x_small_upsample = self.upsample_to_match_size(x_small_image, x_big_image) # Upsample first generator run output to be same size as second generator run output 
-        
-        # Interpolate between the upsampled image and the image from the generator using alpha
-        #### START CODE HERE ####
-        # interpolation = self.alpha * x_big_image + (1 - self.alpha) * x_small_upsample
-        #### END CODE HERE #### 
-        
         if return_intermediate:
             return interpolation, x_small_upsample, x_big_image
           
@@ -310,8 +284,7 @@ class MicroStyleGANGenerator(nn.Module):
         
         else:
           return x_block4_image
-    
-    #UNIT TEST COMMENT: Required for grading
+
     def get_self(self):
         return self;
 
@@ -424,23 +397,15 @@ class MicroStyleGANGeneratorConditional(nn.Module):
         x = self.block0(x, w, class_labels)
         
         x_block1 = self.block1(x, w, class_labels) # First generator run output
-        #x_block1_image = self.block1_to_image(x_block1)
         
         x_block2 = self.block2(x_block1, w, class_labels) # Second generator run output 
-        #x_block2_image = self.block2_to_image(x_block2)
+
         
         x_block3 = self.block3(x_block2, w, class_labels) # third generator block output
-        #x_block3_image = self.block3_to_image(x_block3)
+
         
         x_block4 = self.block4(x_block3, w, class_labels) # fourth generator block output
         x_block4_image = self.block4_to_image(x_block4)
-                
-        #x_small_upsample = self.upsample_to_match_size(x_small_image, x_big_image) # Upsample first generator run output to be same size as second generator run output 
-        
-        # Interpolate between the upsampled image and the image from the generator using alpha
-        #### START CODE HERE ####
-        # interpolation = self.alpha * x_big_image + (1 - self.alpha) * x_small_upsample
-        #### END CODE HERE #### 
         
         tanh_func = nn.Tanh()
         if return_intermediate:
@@ -456,6 +421,5 @@ class MicroStyleGANGeneratorConditional(nn.Module):
         else:
           return tanh_func(x_block4_image)
     
-    #UNIT TEST COMMENT: Required for grading
     def get_self(self):
         return self;        

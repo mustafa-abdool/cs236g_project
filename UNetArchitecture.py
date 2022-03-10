@@ -6,13 +6,18 @@ from pkmn_constants import *
 from MappingNetwork import MappingNetwork
 from GaussianNoise import GaussianNoise
 
+"""
+Classes used for class conditioned Unet Architecture code
+"""
 
-# Perform adaptive normalization with 
+
+# Perform adaptive normalization with class conditional layer if specified
 class AdaINClassAdapativeLayer(nn.Module):
     '''
     AdaIN Class
     Values:
-        channels: the number of channels the image has, a scalar
+        channels: the number of channels the image has, a scalar,
+        class_embed_size: Dimension of class embedding for normalization
 
     '''
 
@@ -30,14 +35,14 @@ class AdaINClassAdapativeLayer(nn.Module):
     def forward(self, image, class_labels = None):
         '''
         Function for completing a forward pass of AdaIN: Given an image and intermediate noise vector w, 
-        returns the normalized image that has been scaled and shifted by the style.
+        returns the normalized image that has been scaled and shifted by the style. If class_labels is not
+        None then the class embedding will be used to obtain style/shift parameters
+
         Parameters:
             image: the feature map of shape (n_samples, channels, width, height)
             w: the intermediate noise vector, shape: (n_samples, w_dim)
             class_labels: the labels for each image you are trying to generate (only used if use_class_style = True). Shape (n_samples, 1)
         '''
-
-        # todo (Moose): do we need this in this architecture ?
 
         # normalized_image = self.instance_norm(image)
         normalized_image = image
@@ -70,12 +75,10 @@ class InjectNoise(nn.Module):
         super().__init__()
         self.weight = nn.Parameter( # You use nn.Parameter so that these weights can be optimized
             # Initiate the weights for the channels from a random normal distribution
-            #### START CODE HERE ####
             
             # you have one weight per channel and it starts off by being initialized using N(0,1)
             torch.randn((1, channels, 1, 1))
             
-            #### END CODE HERE ####
         )
 
     def forward(self, image):
@@ -85,14 +88,13 @@ class InjectNoise(nn.Module):
         Parameters:
             image: the feature map of shape (n_samples, channels, width, height)
         '''
-        # Set the appropriate shape for the noise!
         
-        #### START CODE HERE ####
+
         n_samples, channels, width, height = image.shape
         # basically you want to apply the noise to all channels at once
         # you only ahve one channel of truly random noise that is applied across all channels
         noise_shape = (n_samples, 1, width, height)
-        #### END CODE HERE ####
+
         
         noise = torch.randn(noise_shape, device=image.device) # Creates the random noise
         return image + self.weight * noise # Applies to image after multiplying by the weight for each channel
@@ -113,11 +115,6 @@ def crop(image, new_shape):
     '''
     # There are many ways to implement this crop function, but it's what allows
     # the skip connection to function as intended with two differently sized images!
-    #### START CODE HERE ####
-    
-    
-    #print("Size of image is: {}".format(image.shape))
-    #print("New shape is: {}".format(new_shape))
     
     new_width = new_shape[2]
     new_height = new_shape[3]
@@ -132,13 +129,9 @@ def crop(image, new_shape):
     width_odd_delta = 1 if (curr_width - new_width) % 2 == 1 else 0
     height_odd_delta = 1 if (curr_height - new_height) % 2 == 1 else 0
     
-    #print("Delta w is: {}, delta h is: {}".format(delta_w, delta_h))
-    
     cropped_image = image[:, :, delta_w:curr_width - delta_w - width_odd_delta, delta_h : curr_height - delta_h - height_odd_delta]
     
-    #print("Shape of final cropped image is: {}, target shape is: {}, input image has shape: {}".format(cropped_image.shape, new_shape, image.shape))
-    
-    #### END CODE HERE ####
+
     return cropped_image
 class ContractingBlock(nn.Module):
     '''
@@ -418,7 +411,7 @@ class UNetConditional(nn.Module):
         Given an image tensor, passes it through U-Net and returns the output.
         Parameters:
             noise_vec: noise tensor of shape (n_samples, z_dim)
-            labels: label tenosr of shape (n_samples, 1) 
+            class_labels: label tenosr of shape (n_samples, 1) 
             Tiled to create an image tensor of shape (batch size, 1, height, width)
         '''
         
