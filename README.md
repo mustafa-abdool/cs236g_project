@@ -2,7 +2,7 @@
 
 ## Project Description
 
-The goal is this project is to leverage GANs (Generative Adverserial Models) to automatically create new Pokemon. While this idea has been explored before, I want to specifically investigate the conditional generation of Pokemon by type - such as being able to generate a water, fire or grass type Pokemon!
+The goal is this project is to leverage GANs (Generative Adverserial Models) to automatically create new Pokemon. While this idea has been explored before, I want to specifically investigate the conditional generation of Pokemon by type - such as being able to generate a water, fire or grass type Pokemon! For full details, please see the final report file: `CS236G_Final_Report_MustafaAbdool.pdf`
 
 ## Samples/Demo
 So far, the best models I've produced have used an auxillary multi-class loss for the Pokemon type or the Autoencoding Gan architecture (you can read more about that [here] (https://arxiv.org/abs/2004.05472) 
